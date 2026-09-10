@@ -1,6 +1,7 @@
 # 3. Viva Direct
 
-**No files at all.** Connect straight to Viva Insights and let it refresh itself.
+**Direct Viva consumption, without a consumption CSV download.** Connect straight to Viva
+Insights and let it refresh itself. Optional policy-name and other-product data still use files.
 
 ---
 
@@ -110,6 +111,25 @@ stay empty, which is a supported state.
 > lookup already handles them.
 
 **[Where to get each one →](../docs/DATA-SOURCES.md)**
+
+### Automating Azure in Viva Direct
+
+Follow the [Local CSV Azure automation procedure](../1.%20Local%20CSV/README.md#automate-azure-collection).
+The collector writes `AzureAiSpendDaily.csv` and `AzureAiTokensDaily.csv` into this
+template's `DataFolder`; their column names match the saved Power Query readers.
+`AzureAiDeployments.csv` is not consumed.
+
+The Viva connector only supplies Viva data. It does **not** call Azure APIs, run the Python
+script, or read the Fabric notebook's tables. Keep the scheduled collector and Power BI
+refresh as separate steps, with refresh dependent on collection success.
+
+When published, local Azure files require a configured gateway with access to `DataFolder`,
+alongside the Viva connector's cloud credentials. Test using the actual gateway and scheduled
+identities. An empty optional Azure page does not prove collection succeeded: a missing or
+inaccessible folder can be handled as an empty source. Monitor job failures and file freshness.
+
+See the [Azure model limitations](../docs/DATA-SOURCES.md#important-limits-of-the-shipped-azure-page)
+and [acceptance checks](../docs/TESTING.md#azure-automation-acceptance) before enabling schedules.
 
 ---
 

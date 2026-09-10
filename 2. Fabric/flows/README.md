@@ -8,17 +8,37 @@ Consumption Central reads five sources, and they do not automate equally:
 | **GitHub Copilot** | REST API, via [`Ingest_GitHub_API.ipynb`](../notebooks/Ingest_GitHub_API.ipynb) | **No** |
 | **Entra org** | Graph PowerShell on a schedule | **No** |
 | **Copilot Studio** | None — PPAC is download-only | Yes |
-| **Azure AI Foundry** | None — Cost Management exports are download-only at the grain we need | Yes |
+| **Azure AI Foundry** | Cost Management Query + Azure Monitor, via [`Ingest_Azure_AI.ipynb`](../notebooks/Ingest_Azure_AI.ipynb) | **No** |
 
-So the two that still need someone to press export are **Copilot Studio** and **Azure AI Foundry**.
+Of these routes, **Copilot Studio** still needs someone to press export. Azure AI does not.
 
-**The flows on this page are for those two.** They watch a mailbox or a SharePoint library and write
+**The flows on this page are for manually landed exports.** They watch a mailbox or a SharePoint library and write
 straight to OneLake, so the ingester picks the file up on its next run. That does not remove the
 download; it removes the "save it in the right place" step and the mistakes that come with it.
 
 > **Viva does not need a flow.** It used to, and older notes here said so. The certified connector
 > now covers it end to end — use the Dataflow Gen2 route on Fabric. A flow is only worth setting up
 > for Viva if you are deliberately working from downloaded CSVs.
+
+## Azure AI: schedule the notebook, not a file flow
+
+Follow the [Azure AI setup](../README.md#2b-azure-ai-foundry-tables-optional) for application
+registration, Key Vault, Azure RBAC, the default Lakehouse and notebook configuration.
+The notebook obtains an explicit ARM application token; it does **not** assume Fabric
+`getToken` supports ARM or that the notebook automatically has a managed identity.
+The notebook's execution identity needs secret-read and Lakehouse write permissions separately
+from the application's Azure permissions. Validate the scheduled/Notebook activity connection
+identity, which can differ from the interactive user.
+
+Schedule a Fabric pipeline **Notebook activity → on success → semantic-model refresh**.
+The notebook overwrites `azure_ai_spend` and `azure_ai_tokens` for its rolling complete-UTC-day
+window, including legitimately empty results. All collection completes before writes, but the two
+table writes are not a single transaction. On any failure, stop downstream refresh and retry the
+whole ingestion with bounded backoff; do not run overlapping writers. Verify initial SQL endpoint
+visibility before refreshing. Scheduling Power BI refresh alone does not ingest Azure data.
+
+Cost Management also supports scheduled exports to storage, but those need schema transformation
+and a separate Monitor metrics load. They are not a drop-in replacement for this notebook.
 
 ---
 
@@ -84,13 +104,13 @@ A flow can only react to a file that shows up. How each source gets there:
 |---|---|
 | **Viva consumption** | **No flow needed** — a [Dataflow Gen2](../README.md#the-viva-half-needs-no-notebook) writes query results straight to the Lakehouse on a schedule. Use a flow only if you are deliberately working from downloaded CSVs. |
 | **Copilot Studio** | Manual download — PPAC is download-only. Mail it to the watched mailbox or drop it in the library. |
-| **Azure AI Foundry** | Manual download from Cost Management. Same handling as Studio. |
+| **Azure AI Foundry** | Schedule the API notebook above. No download or mailbox/SharePoint flow is needed. |
 | **GitHub** | The report is *emailed to you*, so the email flow can catch it with no human step at all. Better still, skip it and use the API notebook. |
 | **Entra org** | Schedule the Graph PowerShell snippet in [DATA-SOURCES.md](../../docs/DATA-SOURCES.md) and have it write to the SharePoint library. Fully automatable. |
 
-So realistically: **Viva, GitHub and Entra can be fully hands-off. Copilot Studio and Azure AI
-Foundry still need someone to press export** — the flow just removes the "save it in the right
-place" step and the mistakes that come with it.
+So realistically: **Viva, GitHub, Entra and Azure AI can be fully hands-off. Copilot Studio
+still needs someone to press export** — the flow just removes the "save it in the right place"
+step and the mistakes that come with it.
 
 That is still worth having. The failure mode you are protecting against is not someone forgetting to
 click download; it is someone downloading it and putting it somewhere the pipeline cannot see.
@@ -99,9 +119,10 @@ click download; it is someone downloading it and putting it somewhere the pipeli
 
 ## Re-runs are safe
 
-Every Consumption Central ingester merges on a natural key, so re-landing the same export updates rather than
-duplicates. You can leave old files in the landing folder, or prune them — neither changes the
-numbers.
+Re-run behavior is source-specific: some ingesters merge natural keys, while snapshot ingesters
+replace their tables. Azure AI replaces its rolling window, not a growing history archive.
+Do not assume that keeping or pruning landing files is harmless for every ingester; check the
+matching notebook's load behavior before deleting source files.
 
 The Studio ingester additionally records a `source_file` column, so if a bad export does land you can
 find its rows and remove them.

@@ -98,6 +98,13 @@ you automate anything.
 
 Each folder has its own short guide with the exact steps.
 
+**Azure can be automated on all three paths.** Schedule the Python collector for Local CSV
+and Viva Direct, or the Azure notebook for Fabric, then refresh the report after ingestion
+succeeds. No manual Azure export is required. Start with the
+[Azure automation and template compatibility guide](docs/DATA-SOURCES.md#automated-setup-and-template-compatibility).
+The current templates read the existing spend/metrics feeds, not the expanded Azure prototype.
+If the recorded walkthrough differs, use these written setup instructions.
+
 ---
 
 ## Two things you'll be asked for
@@ -146,6 +153,10 @@ Both are at the [top of this page](#watch-first) and play inline.
 
 Built and tested end to end against live tenant data on all three paths. The sample dataset is
 synthetic; no customer data is in this repo.
+
+That historical report validation is **not** a live-tenant certification of the revised Azure
+collectors or your scheduled identity/gateway. Complete the
+[Azure acceptance procedure](docs/TESTING.md#azure-automation-acceptance) in your environment.
 
 Not supported through Microsoft support channels — **[open an issue](../../issues)** instead.
 
