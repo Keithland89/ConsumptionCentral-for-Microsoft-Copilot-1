@@ -46,8 +46,8 @@ and `VivaQueryId`. Once access is sorted, paste and refresh.
 
 ## Test 2 — Does the GitHub AI-credit API work in your enterprise? *(15 min)*
 
-This is the one source that can run unattended, so it is worth confirming before anyone builds a
-pipeline on it.
+This source can run unattended, as can Azure collection and the Viva connector. Confirm
+its tenant-specific behavior before building a pipeline on it.
 
 ### Get a token
 
@@ -118,6 +118,54 @@ well below `gross` if the pooled allowance is absorbing most consumption, which 
 Before anything ships, produce the `.pbit` and open it clean.
 
 Steps: **[docs/BUILD.md](BUILD.md)**
+
+---
+
+## Azure automation acceptance
+
+The saved PBIT readers accept the canonical spend/metrics output schemas on all three paths.
+Offline code/schema checks do not prove that Azure permissions, available metrics, Fabric
+execution identity, SQL synchronization or gateway refresh work in a particular tenant.
+
+From the repository root, run the offline checks before tenant acceptance:
+
+```powershell
+python ".\docs\scripts\check_azure_template_contract.py"
+python ".\docs\scripts\test_azure_notebook_requests.py"
+python ".\1. Local CSV\test_pull_azure_ai.py"
+```
+
+1. Start with one subscription and a short window of complete UTC days. Run under the
+   intended scheduled identity, not just your interactive account. Verify subscription,
+   billing charge visibility, resource inventory, tags and deployment-read permissions.
+2. Confirm collection exits successfully and both outputs have the documented headers/types.
+   For Fabric, verify `dbo.azure_ai_spend` and `dbo.azure_ai_tokens` are readable through the
+   SQL analytics endpoint; notebook success alone is insufficient for first-time readiness.
+3. Compare spend with Azure Cost Analysis for exactly the same dates, **ActualCost** basis,
+   service filter and currency. Record differences caused by billing latency or adjustments.
+   Do not compare the Foundry card with all-service spend: it filters to `Foundry Models`.
+4. Use a deployment with known activity and compare daily input/output/request counters and
+   average utilisation with Azure Monitor. Check one equivalent metric family, not both
+   current and legacy aliases. Verify deployment names where supported and preserve real
+   zero utilisation. Missing telemetry must remain missing.
+5. Inspect billing units before using `[Foundry Tokens (M)]` or cost-per-million. Do not use
+   those figures with provisioned-hour quantities, mixed units or mixed currencies.
+   `[Total Tokens]` requires the model's input/output metric families; a standalone
+   `TotalTokens` row does not populate it.
+6. Refresh each template you intend to deploy. Local CSV and Viva Direct need `DataFolder`;
+   Service refresh also needs gateway filesystem access. Fabric needs its SQL endpoint,
+   Lakehouse database and appropriate credentials. Confirm values, dates and currency in
+   the report rather than treating the absence of an error as success.
+7. In an isolated test output folder/Lakehouse, simulate denied access or a failed API call.
+   Require a failed collection and blocked downstream refresh, not a successful empty/stale
+   report. Then test a genuinely successful empty collection so prior rows do not linger.
+8. Test a second run, retained zeros, schedule identity and output freshness. Avoid overlapping
+   writers and refresh during publication. After a partial batch write, rerun the whole
+   collection before refreshing. Record the scheduled run and Service refresh outcomes.
+
+The current automation does not populate whole-solution spend, expanded deployment-health,
+or billing-reconciliation prototype feeds. The deployment inventory CSV is not a shipped
+template input. No template rebuild is needed solely to read the canonical existing outputs.
 
 The part that matters most:
 
