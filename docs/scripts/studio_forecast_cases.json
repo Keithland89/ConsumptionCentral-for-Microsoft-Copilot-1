@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "name": "month_growth_30d",
+      "days": 30,
+      "pattern": "exponential",
+      "startingCredits": 120.0,
+      "monthlyGrowth": 0.18,
+      "activeDays": "all",
+      "expectFit": true,
+      "minGrowth": 0.12,
+      "maxGrowth": 0.24
+    },
+    {
+      "name": "ninety_day_growth",
+      "days": 90,
+      "pattern": "exponential",
+      "startingCredits": 90.0,
+      "monthlyGrowth": 0.12,
+      "activeDays": "all",
+      "expectFit": true,
+      "minGrowth": 0.08,
+      "maxGrowth": 0.16
+    },
+    {
+      "name": "weekdays_only_31d",
+      "days": 31,
+      "pattern": "exponential",
+      "startingCredits": 80.0,
+      "monthlyGrowth": 0.10,
+      "activeDays": "weekdays",
+      "expectFit": true,
+      "minGrowth": 0.04,
+      "maxGrowth": 0.16
+    },
+    {
+      "name": "flat_31d",
+      "days": 31,
+      "pattern": "constant",
+      "startingCredits": 75.0,
+      "monthlyGrowth": 0.0,
+      "activeDays": "all",
+      "expectFit": true,
+      "minGrowth": -0.02,
+      "maxGrowth": 0.02
+    },
+    {
+      "name": "insufficient_21d",
+      "days": 21,
+      "pattern": "exponential",
+      "startingCredits": 100.0,
+      "monthlyGrowth": 0.20,
+      "activeDays": "all",
+      "expectFit": false
+    },
+    {
+      "name": "zero_history_45d",
+      "days": 45,
+      "pattern": "constant",
+      "startingCredits": 0.0,
+      "monthlyGrowth": 0.0,
+      "activeDays": "all",
+      "expectFit": false
+    }
+  ]
+}

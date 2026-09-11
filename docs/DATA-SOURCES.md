@@ -275,9 +275,12 @@ renamed file still works.
 > **On the missing dates:** the per-agent and per-user files appear to be period aggregates for the
 > current month-to-date, consistent with PPAC's documented "current month-to-date, the last two full
 > months" behaviour. Consumption Central therefore treats them as period totals and does **not** plot them on
-> a time axis — only the tenant daily file drives Studio trends. This is why the Studio forecast
-> extends a daily run rate rather than fitting a growth curve: there is not enough dated history to
-> fit one honestly.
+> a time axis — only the tenant daily file drives Studio trends. Across all three templates,
+> **Fitted from history** uses that dated tenant history once at least **28 calendar days** and
+> **7 days with positive consumption** are available. It fits a seven-day-smoothed trend, treats
+> missing dates within the observed span as zero usage, and bounds monthly growth to -30%/+30%.
+> Shorter or unusable histories still produce an explicitly labelled flat run-rate projection.
+> The per-agent and per-user files do not supply an independent dated growth curve.
 >
 > The [Fabric path](../2.%20Fabric/) works around this by stamping each load with a snapshot month,
 > so running it monthly builds the history the export itself does not carry.
@@ -625,4 +628,3 @@ If you need the full entitled roster, supply the map files from a de-identified 
 
 Preview features move. If a click-path here does not match what you see, the portal is right and this
 document is stale — please open an issue.
-

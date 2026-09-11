@@ -154,3 +154,43 @@ returns raw row-level data.
 Consumption Central shows per-person consumption deliberately — that is what a chargeback report is for — but
 check whether per-person reporting needs works-council consultation or similar where you operate
 before publishing it.
+# Query-only org regression
+
+**Precondition:** inspect the source output for populated employee attributes and a usable
+identity key. A query with only consumption, Domain and PopulationType is not expected to
+produce Department/Organisation. For identified-user reporting without those attributes,
+test the standard directory-CSV setup instead.
+
+Compare otherwise equivalent identified and de-identified queries to establish which fields
+each returns. Record missing columns, populated coverage and usable identity keys separately.
+Do not treat the identification setting alone as proof that org fields are available.
+
+For the Viva Direct template, verify these checks in a **fresh Desktop import** with only
+`VivaPartitionId` and `VivaQueryId` configured and no directory file. Offline source/package
+checks alone do not prove a successful Desktop refresh.
+
+1. Use a custom consumption query with Department and Organisation employee attributes.
+   Both should appear separately in Group By; `Organization` is also accepted as Organisation.
+2. Refresh with a PersonId/AAD-only query, then an identifiable UPN query if available.
+   Org keys, CoworkBilling keys and CreditsWeekly keys must agree. No identity may occur in
+   multiple Cowork intensity buckets. Repeated weeks must not multiply people.
+3. Compare ungrouped credits with summed Department, Organisation and Usage Intensity (Cowork)
+   groups. Missing attributes belong in `(Not set)`; the totals must agree. Membership is
+   calculated at refresh, not dynamically for a slicer-selected period.
+4. Remove employee attributes from the query. Consumption and intensity must still work.
+   A real populated attribute is normally offered only at 5% coverage; when no attributes
+   meet that threshold, any populated attribute remains eligible.
+5. Add a synthetic optional org file with mixed-case/whitespace keys, an extra attribute,
+   a directory-only person and a blank attribute. Directory nonblank values win; Viva fills
+   gaps; directory-only people remain. AAD-to-UPN matching requires a shared identifier.
+6. Confirm all report pages still render and optional Studio/GitHub/Foundry pages remain empty
+   rather than failing. Check that no pending query changes appear on opening.
+7. With only Domain/PopulationType inline and Department/Organisation in PeopleHistorical,
+   confirm historical attributes still appear. Inline nonblank attributes take precedence;
+   historical values fill blanks, and a nonblank optional directory value overrides both.
+   A historical row must share a resolvable identifier with consumption; unmatched HR rows
+   must not be assigned to the one person with usage.
+
+Do not commit tenant data, identifiers, exports or screenshots from this verification.
+
+---

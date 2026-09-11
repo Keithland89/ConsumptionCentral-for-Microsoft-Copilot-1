@@ -13,7 +13,7 @@ All verified against a live tenant in August 2026.
 |---|---|---|
 | Auto-refresh | ✅ | ❌ |
 | Real UPNs under identification | ✅ | ✅ |
-| Org attributes | ✅ analyst chooses | limited |
+| Org attributes | Depends on the returned output; do not assume they accompany identified users | limited |
 | Supported by this template | ✅ | ❌ |
 | Policy names | in-query column | separate table |
 
@@ -100,6 +100,12 @@ reports success whether or not the table can actually be read.
 ---
 
 ## Org attribute precedence
+
+**Availability comes before precedence.** For identified-user reporting, supply a directory
+CSV as standard unless the required employee attributes are confirmed in the actual output.
+Selecting them in Viva is not sufficient evidence that the connector returns them.
+Disabling user identification may change the returned attributes, but that behavior still
+needs a controlled comparison. See [Department breakdowns](ORG-DATA.md).
 
 All three paths follow the same order:
 

@@ -1,0 +1,28 @@
+{
+  "activeTemplates": [
+    "1. Local CSV\\Consumption Central - Local CSV.pbit",
+    "2. Fabric\\Consumption Central - Fabric.pbit",
+    "3. Viva Direct\\Consumption Central - Viva Direct.pbit"
+  ],
+  "requiredVisualBindings": {
+    "Report/definition/pages/studio-forecast/visuals/sf_growth/visual.json": [
+      "Growth Scenario.Scenario",
+      "'GROWTH ASSUMPTION'"
+    ],
+    "Report/definition/pages/studio-forecast/visuals/sf_kpi/visual.json": [
+      "Credit Consumption (Tenant).Daily Run Rate",
+      "Credit Consumption (Tenant).Projected Credits (30d)",
+      "Credit Consumption (Tenant).Projected Cost (30d)"
+    ],
+    "Report/definition/pages/studio-forecast/visuals/sf_note/visual.json": [
+      "Credit Consumption (Tenant).Studio Forecast Note"
+    ],
+    "Report/definition/pages/studio-forecast/visuals/sf_projection/visual.json": [
+      "Credit Consumption (Tenant).Studio Month Credits",
+      "Credit Consumption (Tenant).Studio Month Cost"
+    ],
+    "Report/definition/pages/studio-forecast/visuals/sf_summary/visual.json": [
+      "Credit Consumption (Tenant).Studio Forecast Summary"
+    ]
+  }
+}

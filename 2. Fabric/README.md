@@ -46,8 +46,8 @@ the workspace and Lakehouse at the top of each, run.
 | `Ingest_Azure_AI` | Azure Cost Management + Monitor | `azure_ai_spend`, `azure_ai_tokens` |
 | `Ingest_CommercialTerms` | Azure Cost Management | `commercial_terms` |
 | `Ingest_Studio` | Power Platform exports | `studio_*` |
-| `Ingest_Org` | Entra export | `org_attributes` |
-| `Ingest_Viva_Consumption` | *Fallback only* — Viva CSV export | `viva_credits_weekly`, `viva_spending_policy` |
+| `Ingest_Org` | Viva consumption attributes, optionally enriched by an Entra export | `org_attributes` |
+| `Ingest_Viva_Consumption` | *Fallback only* — Viva CSV export, retaining employee attributes | `viva_credits_weekly`, `viva_spending_policy` |
 
 **[Where each export comes from →](../docs/DATA-SOURCES.md)**
 
@@ -80,6 +80,16 @@ Open **`Consumption Central - Fabric.pbit`** and paste in:
 | **`LakehouseName`** | Your Lakehouse name |
 
 Everything else has a default.
+
+**Organisation enrichment is automatic by default.** The template derives employee attributes and
+the person population from `viva_credits_weekly`; no separate org file or `org_attributes` table is
+required. Include the employee attributes in the Viva query and retain them when landing the data.
+`Organisation`/`Organization` appears as **Organisation**, separately from **Department**.
+Usage-intensity groups remain connected even when no employee attributes are supplied.
+
+`Ingest_Org` is optional: run it to materialise the organisation table for reuse or to apply a
+separate Entra export. Populated enrichment values override the matching consumption attributes;
+blank enrichment values do not erase them. Attributes not provided by any source cannot be inferred.
 
 ### 5. Publish and schedule
 
@@ -117,7 +127,9 @@ Lakehouse on a schedule — no download, no notebook. **This is the preferred ro
 3. Paste both identifiers. Leave *Query Name* blank. Under **Advanced options** set **Schema Type =
    Pivoted** and **Data Granularity = Row-level data**. Authenticate with an **Organizational
    account**.
-4. Set the Lakehouse as the data destination, then schedule the refresh for **Tuesday ~8am PST** —
+4. Set the Lakehouse as the data destination and name the consumption table `viva_credits_weekly`.
+   Keep the person identifiers, metric columns, and selected employee attributes; do not remove the
+   organisation columns before loading. Then schedule the refresh for **Tuesday ~8am PST** —
    after Viva's weekend refresh.
 
 > Leaving *Query Name* blank only works against a **custom query**, which returns a single table.
