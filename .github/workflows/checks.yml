@@ -116,6 +116,17 @@ jobs:
           sys.exit(1 if missing else 0)
           PY
 
+      - name: Shipped Azure template contracts
+        run: |
+          python docs/scripts/check_azure_template_contract.py
+          python -m unittest discover -s docs/scripts -p 'test_azure_template_contract.py'
+
+      - name: Azure notebook request regression tests
+        run: python docs/scripts/test_azure_notebook_requests.py
+
+      - name: Local Azure collector regression tests
+        run: python "1. Local CSV/test_pull_azure_ai.py"
+
       - name: Sample data carries no real identifiers
         run: |
           # The sample set is synthetic. This catches a real export being

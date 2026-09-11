@@ -770,11 +770,11 @@ loaded). The gate sits on the base measures, so everything derived from them inh
 
 | Measure | What it is |
 |---|---|
-| `Foundry Cost` | Model spend. Excludes the Copilot Studio rows that share the table. |
+| `Foundry Cost` | Spend filtered to the exact service name `Foundry Models`; not all AI services or whole-solution Azure spend. |
 | `Foundry Input Cost` / `Foundry Output Cost` | Split by token direction, parsed from the meter name |
 | `Foundry Output Cost Share %` | Output tokens cost several times input, so a rising share explains a rising bill that token counts alone would not |
-| `Foundry Tokens (M)` | Millions of tokens billed |
-| `Foundry Cost per 1M Tokens` | The blended unit price you are actually paying |
+| `Foundry Tokens (M)` | Sums billing `UsageQuantity` without conversion. Only means millions of tokens when every selected quantity uses that unit; not valid for provisioned hours or mixed units. |
+| `Foundry Cost per 1M Tokens` | Cost divided by that billing quantity. Only a per-million-token rate for a compatible token-meter selection in one currency. |
 | `Foundry Days Observed` | Days with spend inside the selected window |
 | `Foundry Daily Run Rate` / `Foundry Cost /mo` | Run rate, and that rate over 30 days |
 | `Foundry Billing Period` | The dates the page currently covers |
@@ -783,7 +783,7 @@ loaded). The gate sits on the base measures, so everything derived from them inh
 
 | Measure | What it is |
 |---|---|
-| `Prompt Tokens` / `Generated Tokens` / `Total Tokens` | From Azure Monitor, accepting either the current or the older metric names |
+| `Prompt Tokens` / `Generated Tokens` / `Total Tokens` | Input/output families from Monitor; total adds the two and does not read the standalone `TotalTokens` metric. Supply one current/legacy alias per measurement, not both. |
 | `AI Requests` / `Tokens per Request` | Volume, and average size per call |
 | `PTU Utilisation %` | Mean utilisation of provisioned throughput. **AVERAGE, not SUM** — summing a percentage across days produces a number in the thousands that looks like a catastrophe. |
 | `PTU Verdict` | Plain-English reading. Below 30% means capacity is largely idle. |
@@ -792,6 +792,10 @@ loaded). The gate sits on the base measures, so everything derived from them inh
 
 | Measure | What it is |
 |---|---|
-| `Studio PAYG Billed (Azure)` | What Azure actually invoiced for Copilot Studio pay-as-you-go |
+| `Studio PAYG Billed (Azure)` | Azure-recorded Copilot Studio PAYG cost; subject to billing latency and adjustments, not a final invoice. |
 | `Studio PAYG Credits (Azure)` | The same, as credits |
-| `Studio Rate Implied by Azure` | Divide one by the other and you get the real rate. Compare with the rate in your parameters — when they disagree, the parameter is wrong. |
+| `Studio Rate Implied by Azure` | Recorded cost divided by quantity. Compare like-for-like dates, scope, currency and units; differences may reflect timing, discounts or scope as well as a parameter. |
+
+The shipped model does not convert currencies or normalize billing units. See
+[Azure automation limitations](DATA-SOURCES.md#important-limits-of-the-shipped-azure-page)
+before using automated feeds for chargeback.

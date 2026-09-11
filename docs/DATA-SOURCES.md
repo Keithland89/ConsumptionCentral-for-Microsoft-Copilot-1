@@ -22,10 +22,10 @@ The single question most people arrive with. Answered once, here:
 | [GitHub Copilot](#3-github-copilot-ai-credits) | REST API | **No** |
 | [Entra org attributes](#5-org-attributes--microsoft-entra-optional) | Graph PowerShell on a schedule | **No** |
 | [Copilot Studio](#2-copilot-studio-credits) | None — PPAC is download-only | **Yes** |
-| [Azure AI Foundry](#4-azure-ai-foundry) | None at the grain used here — see that section | **Yes** |
+| [Azure AI Foundry](#4-azure-ai-foundry) | Cost Management Query API + Azure Monitor; scheduled Python collector or Fabric notebook | **No** |
 
-For the two that need a download, a [Power Automate flow](../2.%20Fabric/flows/) can at least land
-the file in the right place for you.
+For manually downloaded exports, a [Power Automate flow](../2.%20Fabric/flows/) can land
+the file in the right place. Azure collection does not require that flow.
 
 ---
 
@@ -404,9 +404,64 @@ Four things worth knowing, all confirmed:
 
 ## 4. Azure AI Foundry
 
-Two exports, and you can start with just the first. Spend alone gives you cost,
-cost per million tokens and the input/output split. The metrics export adds
-provisioned-capacity utilisation, which is where the money usually hides.
+**Azure data can be collected without manual downloads.** Cost Management supplies recorded
+resource/meter cost and usage quantities; Azure Monitor supplies operational metrics.
+These are separate API calls. A Power BI refresh reads the resulting files or tables:
+it does not execute the collector.
+
+### Automated setup and template compatibility
+
+| Shipped template | Collection route | What the template actually reads |
+|---|---|---|
+| **Local CSV** | Schedule [`pull_azure_ai.py`](../1.%20Local%20CSV/pull_azure_ai.py) | `DataFolder\AzureAiSpendDaily.csv` and `DataFolder\AzureAiTokensDaily.csv` |
+| **Fabric** | Schedule [`Ingest_Azure_AI.ipynb`](../2.%20Fabric/notebooks/Ingest_Azure_AI.ipynb) | `dbo.azure_ai_spend` and `dbo.azure_ai_tokens` through the Lakehouse SQL analytics endpoint |
+| **Viva Direct** | Same Python collector as Local CSV | The same two CSVs in `DataFolder`; the Viva connector does **not** collect Azure data |
+
+Follow the [Local CSV automation steps](../1.%20Local%20CSV/README.md#automate-azure-collection)
+or the [Fabric automation steps](../2.%20Fabric/README.md#2b-azure-ai-foundry-tables-optional).
+For Viva Direct, also configure its [optional Azure file source](../3.%20Viva%20Direct/README.md#automating-azure-in-viva-direct).
+Keep the canonical filenames/table names and column headers below.
+
+The shipped templates' saved Power Query definitions accept these collector output contracts.
+This is **schema compatibility**, not proof of authentication, Azure collection, gateway access
+or a successful refresh in your tenant. Complete the
+[Azure acceptance checks](TESTING.md#azure-automation-acceptance) before enabling unattended refresh.
+Missing optional files/tables and a failed collection are not the same thing: monitor the
+collection job and freshness, even when Power BI shows no error.
+
+The local script also produces `AzureAiDeployments.csv` for inventory inspection.
+**None of the three shipped templates loads that file.** The expanded whole-solution spend,
+deployment-health and billing-reconciliation prototype is not shipped in these templates;
+its additional three feeds are not populated by this automation.
+
+### Important limits of the shipped Azure page
+
+- Collection uses **ActualCost** and the existing AI-service allowlist, not all Azure spend
+  or an Actual/Amortized selector. Supporting infrastructure such as Storage and networking
+  is not a complete solution-cost view here.
+- `[Foundry Cost]` filters specifically to `ServiceName = "Foundry Models"`. The collectors
+  can also return legacy/other AI services and Studio billing rows; these are not all
+  included in that card. Do not relabel service names merely to force them into its total.
+- `[Foundry Tokens (M)]` sums billing `UsageQuantity` without unit conversion.
+  **Only interpret it and cost-per-million as token metrics when the selected meters'
+  quantities are all in millions of tokens.** Provisioned hours, other units and mixed
+  billing units do not meet that condition. The current readers do not retain a unit
+  column, so adding one to a CSV alone cannot fix this measure.
+- Costs have **no currency conversion**. Keep each report's Azure feed in one currency,
+  or explicitly filter the model to one currency before aggregating; do not combine
+  currencies because a visual happens to display a dollar symbol.
+- Monitor input/output counts are distinct from billed quantities. The model's
+  `[Total Tokens]` adds input and output families, not the standalone `TotalTokens` metric.
+  Do not combine current and legacy aliases for the same measurements: the shipped DAX
+  accepts both names and would sum duplicates.
+- Tags are read from current resource inventory, not reconstructed historically.
+  Missing department tags remain blank; the API cannot infer ownership or per-user cost.
+  `ResourceId` and `MeterCategory` are present in the spend output but not retained in
+  the shipped model, so keep subscriptions with colliding resource names in separate feeds/models.
+
+Spend and Monitor data can arrive at different times and cover different available histories.
+Start with a short window, reconcile the same dates, service filters and currency in Azure,
+then increase the collection window. These scripts replace rolling snapshots, not a permanent archive.
 
 ### Where — spend
 
@@ -419,18 +474,17 @@ provisioned-capacity utilisation, which is where the money usually hides.
 Group by **Service name**, **Meter** and **Resource**, set granularity to **Daily**, and pick your date
 range. Export as CSV. Or schedule it: **Cost Management** → **Exports** → daily to a storage account.
 
-> ⚠️ **The service is called `Foundry Models`, not "Azure OpenAI".** Filtering on the old name returns
-> nothing at all — an empty page that looks exactly like "we have no Foundry spend". Verified against
-> live cost data, 2026-08-08.
+> **Inspect the service names in your own subscription.** `Foundry Models` was observed in the
+> original live cost data; legacy services can have other names. The shipped Foundry cost
+> measure filters to `Foundry Models`, even though collection supports several AI service names.
 
 > ⚠️ **The dimension is `Meter`, not `MeterName`.** The Cost Management UI and the older API reference
 > disagree; the export column is `Meter`. Consumption Central accepts either.
 
-> 💡 **Copilot Studio pay-as-you-go shows up here too**, as `Pay As You Go Copilot Credit` under service
-> `Microsoft Copilot Studio`, priced at exactly $0.01. That is genuinely useful: the Studio pages compute
-> PAYG cost from a rate you typed into a parameter, and this is the invoice. The Foundry page reconciles
-> the two. When they disagree, the parameter is wrong — which is otherwise a completely silent error,
-> because every figure derived from a wrong rate still looks entirely plausible.
+> **Copilot Studio pay-as-you-go can appear under `Microsoft Copilot Studio`.** Compare the
+> recorded cost and quantity with consumption estimates using the same period, currency and
+> billing scope. Cost Management data can lag or be adjusted; it is not itself a final invoice.
+> A difference can reflect timing, scope, discounts or a rate assumption, not just a wrong parameter.
 
 ### Columns — `AzureAiSpendDaily.csv`
 
@@ -499,15 +553,13 @@ az monitor metrics list \
 > resources, a single account can publish **both** sets simultaneously. Consumption Central accepts
 > either, and `pull_azure_ai.py` asks each resource which it actually has.
 >
-> Requesting a metric a resource does **not** publish returns a well-formed series of **zeros** rather
-> than an error — which reads as an idle deployment instead of a wrong name, and is how an hour
-> disappears.
+> Discover metric definitions before requesting data. Unsupported requests can fail or return no
+> usable series. Keep a reported numeric zero, but never convert missing/null telemetry into zero.
 
-> ⚠️ **Partly verified.** The metric names are confirmed: two live AI resources publish **both** the
-> current and the older set side by side, which is why the template accepts either. What has *not*
-> been seen is this path carrying real token volume — the tenant it was built against has no traffic
-> on those deployments, so every call succeeded and returned zero rows. The spend half is fully
-> verified against real invoices. If your token columns land differently, please open an issue.
+> **Validation boundary:** the original investigation observed both naming families, but did not
+> establish nonzero deployment-level telemetry in that tenant. Revised collection must be tested
+> against your resource's definitions and known activity. A successful empty response alone does
+> not prove that there was no traffic.
 
 ### Columns — `AzureAiTokensDaily.csv`
 
@@ -521,7 +573,8 @@ PTU capacity is paid for whether it is used or not, so idle provisioned throughp
 equivalent of an unassigned GitHub Copilot seat: real money, invisible on a spend chart, and
 recoverable. The Foundry page calls it out below 30%.
 
-If you have no provisioned deployment, skip this export. The page says so rather than showing zero.
+If you have no provisioned deployment, utilisation may be absent; token/request metrics can
+still be useful. Missing telemetry is not proof that provisioned capacity does not exist.
 
 ---
 
