@@ -11,12 +11,18 @@ ability to group by department, job title, manager and so on.
 
 | You have | Do this |
 |---|---|
-| Only Cowork / Work IQ | Add org attributes to your Viva query. Nothing else needed. |
+| Cowork / Work IQ with user identification | Supply a directory CSV as standard unless the actual Viva output includes the required employee attributes. |
+| Cowork / Work IQ without user identification | Inspect the output; a query-only setup works only if employee attributes and usable identity keys are returned. |
 | GitHub Copilot or Studio as well | **Also supply a directory export.** |
 | Azure AI Foundry | Tag your Azure resources. |
 
 **If in doubt, supply the directory export.** It covers everyone, and it
 costs one download.
+
+Selecting employee attributes in Viva does not guarantee that the connector returns them.
+UPNs, Domain and Population Type are not a substitute for Department or Organisation.
+Whether disabling user identification restores the selected HR attributes still needs an
+identified/de-identified comparison; do not promise this as a workaround.
 
 ---
 
@@ -70,8 +76,8 @@ Column names are matched flexibly — `department`, `Department` and
 Viva Insights → your query → **Select spending policy and employee
 attributes** → tick what you want.
 
-Worth doing even if you supply a directory export: these attributes are
-guaranteed to match the people in the usage data.
+Then inspect the returned columns and values. If the attributes are absent or blank,
+supply a directory CSV with matching identities; the template cannot infer them.
 
 ---
 

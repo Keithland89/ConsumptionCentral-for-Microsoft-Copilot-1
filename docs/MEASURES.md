@@ -16,7 +16,10 @@ description in the model and should be given one.
 ### Forecast
 
 **`Daily Run Rate`** · *Credit Consumption (Tenant)*  
-Average credits consumed on an active day. This is a run rate, not a fitted trend - the export is too sparse for regression.
+Average Studio credits per calendar day across the observed history window. Missing dates inside that span count as zero usage rather than inflating an active-day average.
+
+**`Projected Credits (30d)`** · *Credit Consumption (Tenant)*  
+First forecast month, using the same fitted or selected growth rate as the projection chart.
 
 **`Projected Cost (30d)`** · *Credit Consumption (Tenant)*  
 Projected 30-day cost, valued at the blended rate implied by the actual prepaid / pay-as-you-go split rather than a single assumed price.
@@ -34,7 +37,7 @@ This group's slice of the projected twelve-month cost, allocated by its share of
 This group's slice of the projected 30-day cost. The per-user export carries no date, so this allocates the tenant projection by the group's share of user-attributed consumption. Only covers credits that reached a named user - agent and environment activity with no person attached is not in the share, so these will not sum to the tenant total.
 
 **`Projected Credits (Horizon)`** · *Credit Consumption (Tenant)*  
-Run-rate projection across the horizon selected on the Cowork forecast page, so both halves of the report share one planning window.
+Sum of forecast months over the selected planning horizon, using the same fitted or selected growth rate as the projection chart.
 
 **`Studio Days Observed`** · *Credit Consumption (Tenant)*  
 Distinct days on which any Studio consumption was recorded. The export only contains days with activity, so this is the true observation count.
@@ -43,16 +46,22 @@ Distinct days on which any Studio consumption was recorded. The export only cont
 How long the prepaid capacity lasts at the current daily rate. Counts only environments that hold capacity - an environment with none cannot run one down. Blank when there is no prepaid capacity to burn through.
 
 **`Studio Forecast Confidence`** · *Credit Consumption (Tenant)*  
-How dependable the Studio projection is. The export is a short, gap-prone window, so this is deliberately conservative.
+History-length and coverage indication. A fit needs at least 28 calendar days and 7 days with positive consumption; sparse or shorter windows remain low confidence. This is not a statistical prediction interval.
 
 **`Studio Forecast Note`** · *Credit Consumption (Tenant)*  
-Plain statement of what the projection rests on, including the fact that no growth rate can be fitted from an export this short.
+States whether the projection uses historical fitting, a selected scenario, or a flat fallback because usable history is insufficient. Also discloses the missing-day assumption and growth bounds.
 
 **`Studio Forecast Summary`** · *Credit Consumption (Tenant)*  
 Written summary of the Studio outlook, filter-aware. Leads with the twelve month number so it answers the page title.
 
 **`Studio Growth Applied %`** · *Credit Consumption (Tenant)*  
-The monthly growth rate the Studio projection uses. Unlike Cowork, Studio cannot fit a rate from history - the export is a short, gap-prone window, and a regression across it would be arithmetic dressed up as evidence. So "Fitted from history" means flat here, and the page says so. Every other scenario is an explicit assumption you choose.
+On **Fitted from history**, uses the fitted monthly rate when history is sufficient; otherwise falls back to flat and explains why. Manual scenarios keep their selected rates.
+
+**`Studio Fitted Monthly Growth %`** · *Credit Consumption (Tenant)*  
+Fits a log trend to the seven-day rolling average of dated tenant consumption. Requires at least 28 calendar days and 7 positive-consumption days. Missing dates inside the span are treated as zero; fitted monthly growth is bounded to -30%/+30% for planning.
+
+**`Studio History Span Days`** / **`Studio History Coverage %`** · *Credit Consumption (Tenant)*  
+Calendar span between the first and last dated observations in scope, and the fraction of that span with recorded rows. Environment and selected-period filters remain in scope.
 
 **`Studio Month Cost`** · *Credit Consumption (Tenant)*  
 Cost of that month at the blended rate actually being achieved across the measured prepaid and pay-as-you-go split.

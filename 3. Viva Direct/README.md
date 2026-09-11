@@ -2,6 +2,8 @@
 
 **Direct Viva consumption, without a consumption CSV download.** Connect straight to Viva
 Insights and let it refresh itself. Optional policy-name and other-product data still use files.
+Organisation breakdowns also need a directory CSV when the query output does not supply
+the employee attributes.
 
 ---
 
@@ -30,8 +32,14 @@ Open **`Consumption Central - Viva Direct.pbit`**, paste them in, click **Load**
 > multi-table result, and this template sends no table name. Build your own query under **Analysis**
 > and take the identifiers from **Analysis results**.
 
-**Leave everything else blank.** The prompt lists more boxes than you need — the rest are for
-Copilot Studio, GitHub and Azure AI, which are optional.
+**For identified-user reporting, plan to supply a directory CSV as part of setup.**
+Put `entra_org.csv` in a folder and set `DataFolder` to that folder. Include
+`UserPrincipalName` and the employee attributes you want to group by, such as
+`Department`, `Organisation` and `JobTitle`. The identities must match the consumption data.
+
+You can leave `DataFolder` blank for consumption-only reporting, or when the actual Viva
+output already contains the required org attributes. Selecting attributes in the query UI
+does not prove that the connector returns them. Leave pricing parameters at their defaults.
 
 ---
 
@@ -72,17 +80,42 @@ along on the rows.
 
 ## Department breakdowns
 
-**Add them to your Viva query.** Under *"Select spending policy and employee attributes"*, tick
-Department, Job title, Manager — whatever you want to slice by. They flow through automatically.
+**Check the returned columns, not just the query settings.** With user identification enabled,
+do not assume Department, Organisation or other HR fields will be returned alongside UPNs.
+Use the separate directory CSV as the standard setup unless the required values are confirmed
+in the actual output. Domain and Population Type alone do not provide department breakdowns.
 
-That's easier and more reliable than supplying a separate file, because the attributes always match
-the people in the data.
+Without user identification, selected employee attributes may be available from Viva. This is
+not yet verified as a general rule: compare the identified and de-identified outputs before
+relying on a query-only setup. Do not change identification or privacy settings solely as a
+workaround without confirming that the resulting identity and reporting behavior is suitable.
+
+**Organisation is separate from Department.** Both `Organisation` and `Organization` map to
+the **Organisation** grouping; selecting both Department and Organisation in the query keeps
+both attributes. Custom employee attributes are retained too.
+
+A query-only setup needs no org file **only when the source supplies the attributes and
+resolvable identities**. A `PersonId`, Entra/AAD object id or `PeopleHistoricalId` can identify
+a person; it cannot manufacture missing HR attributes. Identity keys are trimmed and case-normalised.
+Repeated rows are reconciled before calculating usage intensity; conflicting explicit person
+ids produce a `VivaIdentityConflict` refresh error rather than silently double-counting.
+An identity-free consumption row produces `VivaMissingIdentity`.
+
+People with no org values remain in **Usage Intensity (Cowork)**. For a populated attribute,
+missing values appear as **(Not set)**. Attributes populated for less than 5% of the combined
+population are hidden unless none clear that threshold. Buckets describe the loaded billing
+period snapshot; changing a report period does not recalculate their membership.
+
+When attributes do arrive with consumption, the template uses them. Missing source attributes
+require enrichment; refreshing the same query cannot create them.
 
 <details>
-<summary>If you can't change the query</summary>
+<summary>Supplying the directory CSV</summary>
 
 Drop a directory export from the Microsoft Entra admin centre (Users → Download users) into your
-`DataFolder`. It's a fallback: Viva's own attributes are always used first when present.
+`DataFolder`. Where both sources describe a person, the directory wins per nonblank attribute
+and Viva fills its gaps. A shared UPN or person/object identifier is required to match a file
+to consumption; the template cannot infer a link between unrelated identifiers.
 
 **[More on org data →](../docs/ORG-DATA.md)**
 
@@ -100,10 +133,11 @@ they're found by name, so nothing needs renaming and anything you don't have is 
 | Copilot Studio | `StudioTenantDaily`, `StudioPerAgent`, `StudioPerUser` |
 | GitHub Copilot | `GitHubAiUsage`, `GitHubUserMap` |
 | Azure AI Foundry | `AzureAiSpendDaily`, `AzureAiTokensDaily` |
-| Org attributes | `entra` / `orgdata` / `users` — only if you can't add them to the Viva query |
+| Org attributes | `entra` / `orgdata` / `users` — required for org breakdowns when Viva omits the attributes |
 
-Leave `DataFolder` alone if all you have is Cowork. The connector covers it and those pages simply
-stay empty, which is a supported state.
+Leave `DataFolder` blank only if no file enrichment is needed. Cowork consumption works without
+it, but department breakdowns require attributes from Viva or the directory CSV. Other product
+pages remain empty when their exports are not supplied.
 
 > Azure AI Foundry files live in `DataFolder` alongside everything else. The separate
 > `AzureAiSpendCsvPath` / `AzureAiTokensCsvPath` parameters have been removed — one product having
@@ -141,6 +175,27 @@ that `VivaPartitionId` and `VivaQueryId` point at a **custom query** built in An
 a Consumption Dashboard export.
 
 **[Connector detail and what was tested →](../docs/VIVA-CONNECTOR.md)**
+
+---
+
+## Offline regression and rebuild
+
+From the repository root, using Python 3.12 and no additional packages:
+
+```powershell
+python -B docs\scripts\check_viva_query_org.py
+python -B docs\scripts\fix_viva_query_org.py --dry-run
+```
+
+The shipped Viva template already contains the fix. The patcher can also reproduce it from
+the `ee6927c` Viva template; running without `--dry-run` writes it back. It refuses unknown
+source versions. Editable M sources live beside it in `docs\scripts\viva_query_org`.
+Only `DataModelSchema` and `UnappliedChanges` (including cached formulas) change. This export
+has **no DataMashup part**; a package containing one is rejected, not partially patched.
+
+These checks cover package/source contracts and synthetic Python reference fixtures, **not
+execution of M or DAX**. Complete the query-only refresh checks in
+[TEST-PROCEDURE.md](TEST-PROCEDURE.md) before distributing a tenant-validated build.
 
 ---
 
