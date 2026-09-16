@@ -31,6 +31,7 @@ WANT = [
     "Implied Monthly Growth %",
     "Growth Rate Was Capped",
     "Growth Applied %",
+    "GHCP Growth Applied %",
     "Cowork Forecast Confidence",
     "Cowork Forecast Confidence Note",
     "Cowork Forecast Summary",
@@ -93,6 +94,8 @@ def check(pbit, problems, deferred):
             fail("Implied Monthly Growth % still carries the old 6-week gate")
         if "COALESCE" not in found.get("Growth Applied %", ""):
             fail("Growth Applied % does not coalesce a missing fit to 0")
+        if "COALESCE" not in found.get("GHCP Growth Applied %", ""):
+            fail("GHCP Growth Applied % does not coalesce a missing fit to 0")
         if "Indicative only" not in found.get("Cowork Forecast Confidence", ""):
             fail("Cowork Forecast Confidence has no 'Indicative only' tier")
         if "Implied Monthly Growth %" not in found.get("Cowork Forecast Summary", ""):

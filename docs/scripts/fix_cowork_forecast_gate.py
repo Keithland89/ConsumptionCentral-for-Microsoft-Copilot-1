@@ -165,6 +165,24 @@ MEASURE_EDITS = [
             ),
         ],
     ),
+    (
+        # Same blank-inheritance bug on the GitHub page: GHCP Observed Growth %
+        # is blank whenever the usage spans a single calendar month, and
+        # GHCP Growth Applied % passed that blank straight through. Studio
+        # already coalesces (Studio Growth Applied %), and Cowork does now, so
+        # this brings the third forecast family into line.
+        "GHCP Growth Applied %",
+        [
+            (
+                re.compile(
+                    r'IF\(\s*Chosen\s*=\s*"Fitted from history",\s*'
+                    r"\[GHCP Observed Growth %\],\s*Rate\s*\)"
+                ),
+                'IF( Chosen = "Fitted from history", '
+                "COALESCE( [GHCP Observed Growth %], 0 ), Rate )",
+            )
+        ],
+    ),
 ]
 
 DESC_EDITS = [
