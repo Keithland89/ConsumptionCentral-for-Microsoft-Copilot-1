@@ -15,7 +15,7 @@ This page covers where to find each, and which can be looked up automatically.
 | Parameter | Default | Where yours comes from |
 |---|---|---|
 | `CreditRate` | 0.01 | Your agreement or invoice. List price is $0.01 and [verifiable via API](#verifying-the-list-rate). |
-| `PrepaidCreditRate` | 0.008 | Your prepaid capacity agreement. Placeholder assumes 20% off. |
+| `PrepaidCreditRate` | 0.008 | Your prepaid capacity agreement. Placeholder assumes 20% off — see [the tier warning](#the-prepaid-rate-default-assumes-the-largest-tier). |
 | `PrepaidCreditBalance` | 0 | M365 admin center → Copilot → Cost management |
 | `GitHubBusinessSeatPrice` | 19 | Your GitHub agreement. [List price][ghp]. |
 | `GitHubEnterpriseSeatPrice` | 39 | Your GitHub agreement. [List price][ghp]. |
@@ -35,8 +35,41 @@ Asked properly, and the answer is mostly no — but one is genuinely useful.
 | `CreditRate` (list) | ✅ **Yes** | Azure Retail Prices API, public, no auth |
 | `CreditRate` (your negotiated rate) | ⚠️ Possible | Azure Cost Management, needs auth — see below |
 | `PrepaidCreditBalance` | ⚠️ Possible | Reservations + Cost Management, pipeline only |
-| `PrepaidCreditRate` | ❌ No | P3 discount tiers are not published by any API |
+| `PrepaidCreditRate` | ❌ No | Tier *discounts* are published; your tier is not — see below |
 | GitHub seat prices | ❌ No | Contract values. No GitHub API returns a price. |
+
+### The prepaid rate default assumes the largest tier
+
+The **Copilot Credit Pre-Purchase Plan (P3)** discount is set by the size of the annual commitment.
+The September 2026 *Copilot Credits Guide* publishes the full ladder:
+
+| Tier | Copilot Credits | Discount | Implied rate |
+|---:|---:|---:|---:|
+| 1 | 300,000 | 5% | 0.0095 |
+| 2 | 1,500,000 | 6% | 0.0094 |
+| 3 | 3,000,000 | 7% | 0.0093 |
+| 4 | 15,000,000 | 8% | 0.0092 |
+| 5 | 30,000,000 | 10% | 0.0090 |
+| 6 | 75,000,000 | 12% | 0.0088 |
+| 7 | 150,000,000 | 14% | 0.0086 |
+| 8 | 225,000,000 | 17% | 0.0083 |
+| 9 | 300,000,000 | 20% | 0.0080 |
+
+> **The `0.008` default is tier 9** — a 300,000,000-credit annual commitment, the largest discount
+> Microsoft offers. It was chosen as a round placeholder, not as a typical rate. Most organisations
+> land in tiers 1–4, so a customer who accepts the default **understates prepaid cost by up to 15%**.
+> Set it from your own agreement, or from the implied-rate column above if you know your tier.
+
+Two further things the guide is explicit about, both of which change how the prepaid numbers on the
+Optimization page should be read:
+
+- **Unused credits expire at the end of the annual term.** They do not roll over. An underused
+  balance is a loss, not a saving deferred.
+- If usage exceeds the balance, the excess **bills pay-as-you-go** rather than failing — which is why
+  the template prices consumption beyond the balance at `CreditRate`, not `PrepaidCreditRate`.
+
+Both the pay-as-you-go meter and the P3 plan **decrement the Microsoft Azure Consumption Commitment
+(MACC)**, so Copilot credit spend counts toward an existing Azure commitment.
 
 ### Verifying the list rate
 
@@ -125,10 +158,11 @@ and are on the Fabric path, it is the automation with the best return of the fiv
 
 ### What genuinely cannot be automated
 
-**Prepaid rate.** P3 discount tiers are described in
-[the P3 documentation][p3] but the tier pricing is only visible in the Azure portal's Reservations
-blade. It can be derived retrospectively from a past purchase, but that tells you what you paid last
-time, not what you pay now.
+**Prepaid rate.** The P3 discount *ladder* is published — see
+[the tier table above](#the-prepaid-rate-default-assumes-the-largest-tier) — but which tier you hold
+is not exposed by any API, and the resulting per-credit price is only visible in the Azure portal's
+Reservations blade. It can be derived retrospectively from a past purchase, but that tells you what
+you paid last time, not what you pay now.
 
 **GitHub seat prices.** No GitHub API returns a price. The billing API confirms the *plan*
 (`plan_type: business` / `enterprise`), which at least prevents applying the wrong tier — the
@@ -162,6 +196,7 @@ Replace any `CreditRate` reference with a literal — `0.009` — and that produ
 | Retail Prices API carries the credit meter at $0.01 | Live API call | 2026-08-05 |
 | Copilot credits bill to an Azure subscription | [usage-based-billing-overview][ubo] | 2026-07-30 |
 | P3 prepaid discount tiers | [copilot-credit-p3][p3] | 2026-07-17 |
+| P3 tier ladder, 5%–20%; unused credits expire at end of term; both constructs decrement MACC | Copilot Credits Guide, September 2026, p5 | 2026-09-17 |
 | Cost Management query API | [Query API reference][cmq] | 2026-08-05 |
 | GitHub published seat pricing | [Copilot plans][ghp] | 2026-08-05 |
 

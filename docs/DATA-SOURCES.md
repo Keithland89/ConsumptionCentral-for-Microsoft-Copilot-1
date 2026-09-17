@@ -207,7 +207,7 @@ Administrator** to create policies and limits but *not* change the billing metho
 
 ### What "Cowork" is
 
-Cowork is the agentic service inside Microsoft 365 Copilot that carries out multi-step tasks —
+Cowork is the agentic service inside Microsoft Copilot that carries out multi-step tasks —
 sending mail, scheduling, drafting, deep research, scheduled automations.
 ([cowork][s1d], updated 2026-07-27)
 
