@@ -93,7 +93,7 @@ Plain statement of whether the Group By control will reach the Studio figures on
 Share of Studio users that resolve to a record in the org dimension. Studio reports a work email and the org export a UPN; in most tenants these are the same string, but they need not be. A low figure here means slicing Studio by department will silently drop people.
 
 **`Studio Users with Copilot Licence`** · *Credit Consumption (User)*  
-Studio users who also hold a Microsoft 365 Copilot licence.
+Studio users who also hold a Microsoft Copilot licence.
 
 ### Billing
 

@@ -152,6 +152,45 @@ python docs/scripts/fix_pbit_defaults.py
 
 It is a model-only patch, so the freshly signed report layer is left untouched.
 
+### Keep `docs/scripts/*_query_org/` in step with the templates
+
+`fix_viva_query_org.py` repairs the org queries by *replacing* them with the `.m` files under
+`docs/scripts/fabric_query_org/` and `docs/scripts/viva_query_org/`. Those files are the intended
+state of the query, not a record of it — so anything that edits an org query through a PBIP
+round-trip and stops there leaves the `.m` behind, and the next run of the patcher silently reverts
+the work. It has happened twice: the ServiceName labelling in
+[#27](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/pull/27) and the
+`VivaOrgFromPeople` rewrite both shipped in the `.pbit` while the replacement source still held the
+older body.
+
+After changing any query named in a `PROFILES` entry, copy the new body back over its `.m` and
+confirm every replacement matches its template exactly:
+
+```
+python -B docs/scripts/check_viva_query_org.py
+```
+
+The patcher compares byte for byte, so a stray trailing newline is enough to fail the anchor with
+*unsupported source for &lt;query&gt;*.
+
+### Model-layer repairs
+
+These patch `DataModelSchema` and `UnappliedChanges` in place, so they need no PBIP round-trip. All
+take `--dry-run` and all are idempotent:
+
+| Script | Repairs |
+|---|---|
+| `fix_org_upn_case.py` | Folds the `Org` key to lower case. `Table.Distinct`, `Table.NestedJoin` and `Record.FromList` all compare case-sensitively while the DAX relationship does not, so a tenant whose directory says `LaiC@x` and whose Viva export says `laic@x` got two `Org` rows for one person and the refresh died on the duplicate key. Only bites when two sources are present at once. |
+| `fix_query_body_drift.py` | Resettles the `UnappliedChanges` copy of a query on the schema copy. A Desktop re-export trims trailing blank lines from one and not the other; it refuses to touch anything that differs by more than that. |
+
+`fix_credits_guide_text.py` is *not* one of these. It edits textboxes, so it is a report-layer change
+and runs against a PBIP project, then comes back through step 3 above:
+
+```
+python docs/scripts/pbit_to_pbip.py "<template>.pbit" --out C:\pbip
+python docs/scripts/fix_credits_guide_text.py --pbip C:\pbip
+```
+
 ## Before you ship either one
 
 - [ ] Open the exported `.pbit` fresh — it should prompt for parameters before touching any data

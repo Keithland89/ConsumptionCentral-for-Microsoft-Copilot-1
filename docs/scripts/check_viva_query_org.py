@@ -10,7 +10,7 @@ patcher public APIs to bytes only, then tests that candidate against the input.
 No PBIT, scratch files, dependencies, or network resources are created.
 
 Package checks inspect actual sources, caches and records, not only replacement
-byte equality. Baseline checks compare all 348 untouched ZIP local records and
+byte equality. Baseline checks compare all 364 untouched ZIP local records and
 central metadata (excluding relocated offsets), and all non-patch JSON fields.
 This includes unchanged relationship metadata, DAX source strings, and report
 bytes. JSON serialization of the two edited parts necessarily changes.
@@ -37,6 +37,12 @@ import zipfile
 
 sys.dont_write_bytecode = True
 import fix_viva_query_org as fix
+from fix_org_upn_case import BUFFERED_NEW, BUFFERED_OLD
+
+# Every record in the template except the two model parts the patcher may
+# rewrite. All three shipping templates carry the same report layer, so this
+# is a fixed number; it moves only when the report itself gains or loses parts.
+UNAFFECTED_RECORDS = 364
 
 
 def documents(package):
@@ -82,7 +88,8 @@ def compare_packages(test, before, after):
     test.assertEqual(before.end_record[:12] + before.end_record[20:],
                      after.end_record[:12] + after.end_record[20:])
     unaffected = set(before.infos) - set(fix.PARTS)
-    test.assertEqual(len(unaffected), 348, "Expected exactly 348 unaffected records")
+    test.assertEqual(len(unaffected), UNAFFECTED_RECORDS,
+                     f"Expected exactly {UNAFFECTED_RECORDS} unaffected records")
     for name in before.infos:
         with test.subTest(part=name):
             a, b = before.central[name], after.central[name]
@@ -339,9 +346,19 @@ def previous_sources(replacements):
              '        {{"userPrincipalName", "UserPrincipalName"}}),\n'),
         ],
     }
+    # The Org key fold (docs/scripts/fix_org_upn_case.py) is the newest
+    # revision, layered on top of the performance rewrite, so it has to come
+    # off first or none of the older blocks below will match.
+    fold_inverses = {
+        "OrgNormalised": [(BUFFERED_NEW, BUFFERED_OLD)],
+    }
     result = {}
     for name, blocks in inverses.items():
         text = replacements[name]
+        for new, old in fold_inverses.get(name, ()):
+            if text.count(new) != 1:
+                raise AssertionError(f"{name}: case-fold fixture block must match exactly once")
+            text = text.replace(new, old, 1)
         for new, old in performance_inverses.get(name, ()):
             if text.count(new) != 1:
                 raise AssertionError(f"{name}: performance fixture block must match exactly once")
@@ -448,7 +465,7 @@ class PackageContracts(unittest.TestCase):
                       "BaseRows = List.Buffer(Table.ToRecords(Table.Buffer(Table.Distinct(Resolved))))",
                       "Crosswalk = Index(Table.Buffer(Table.Combine({BaseEdges, SourceEdges(VivaSource), SourceEdges(EntraSource)})))",
                       "V = Table.Buffer(Table.SelectColumns(if Viva = null then Empty else Viva",
-                      "Upns = Table.Buffer(Table.Distinct(Table.Combine({")
+                      "Upns = Table.Buffer(ByFoldedKey(Table.Combine({")
         self.contains("VivaOrgAttributes",
                       '{"Keys", each List.Buffer(List.Distinct([ResolvedKey])), type list}',
                       "Unique = Table.Buffer(Table.SelectRows(Grouped",
@@ -534,13 +551,13 @@ class PackageContracts(unittest.TestCase):
                       'Roster = Table.Buffer(Table.AddColumn(RosterIds, "ResolvedKey", '
                       'each if [userPrincipalName] <> null then [userPrincipalName] else [PersonId]',
                       'let t = Clean(v) in if t = null then null else Text.Lower(t)',
-                      'Spine = Table.RenameColumns(', 'Upns = Table.Buffer(Table.Distinct(Table.Combine({',
+                      'Spine = Table.RenameColumns(', 'Upns = Table.Buffer(ByFoldedKey(Table.Combine({',
                       'Table.SelectRows(Table.SelectColumns(Roster, {"ResolvedKey"}), each [ResolvedKey] <> null)',
                       '{{"ResolvedKey", "UserPrincipalName"}}',
                       'Spine, Table.SelectColumns(E, {"UserPrincipalName"}), Table.SelectColumns(V, {"UserPrincipalName"})',
                       'Merged = Table.FromRecords(List.Transform(Table.ToRecords(Upns)',
-                      'VivaRow = Record.FieldOrDefault(VIndex, row[UserPrincipalName], [])',
-                      'EntraRow = Record.FieldOrDefault(EIndex, row[UserPrincipalName], [])')
+                      'VivaRow = Record.FieldOrDefault(VIndex, Fold(row[UserPrincipalName]), [])',
+                      'EntraRow = Record.FieldOrDefault(EIndex, Fold(row[UserPrincipalName]), [])')
         self.contains("Org", 'Table.SelectColumns(OrgNormalised,', 'MissingField.UseNull')
         self.assertNotIn(fix.PLACEHOLDER, self.sources["Org"])
         for column in self.tables["Org"]["columns"]:
@@ -549,14 +566,35 @@ class PackageContracts(unittest.TestCase):
 
     def test_org_merge_indexes_unique_sources_before_per_attribute_access(self):
         self.contains("OrgNormalised",
-                      'VIndex = Record.FromList(List.Buffer(Table.ToRecords(V)), List.Buffer(V[UserPrincipalName]))',
-                      'EIndex = Record.FromList(List.Buffer(Table.ToRecords(E)), List.Buffer(E[UserPrincipalName]))',
+                      'VIndex = Record.FromList(List.Buffer(Table.ToRecords(VK)), List.Buffer(List.Transform(VK[UserPrincipalName], Fold)))',
+                      'EIndex = Record.FromList(List.Buffer(Table.ToRecords(EK)), List.Buffer(List.Transform(EK[UserPrincipalName], Fold)))',
                       'Named = Table.Buffer(Table.FromRecords(Rows, Keep, MissingField.UseNull))',
                       'Keep = List.Buffer(Expected & Extras)',
                       'Bindings = List.Buffer(List.Transform(Aliases',
                       'List.Buffer(List.Distinct(')
         self.assertNotIn('Table.NestedJoin(Upns', compact(self.sources["OrgNormalised"]))
         self.assertNotIn('Table.IsEmpty(row[', compact(self.sources["OrgNormalised"]))
+
+    def test_org_key_is_folded_before_every_case_sensitive_comparison(self):
+        """Org is the one side of every relationship, so its key must be unique
+        under the case-insensitive comparison DAX applies, not the
+        case-sensitive one Table.Distinct and Record.FromList apply."""
+        self.contains("OrgNormalised",
+                      'Fold = (u as nullable text) as nullable text =>',
+                      'if u = null then null else Text.Lower(Text.Trim(u))',
+                      'ByFoldedKey = (t as table) as table =>',
+                      'VK = Table.Buffer(ByFoldedKey(V))',
+                      'EK = Table.Buffer(ByFoldedKey(E))',
+                      'Upns = Table.Buffer(ByFoldedKey(Table.Combine({')
+        # The spine must not be deduplicated case-sensitively anywhere.
+        self.assertNotIn('Upns=Table.Buffer(Table.Distinct(Table.Combine({',
+                         compact(self.sources["OrgNormalised"]))
+        # Folding only the spine would swap the crash for a silent miss, so the
+        # per-attribute lookups have to read through the same fold.
+        self.assertNotIn('Record.FieldOrDefault(VIndex,row[UserPrincipalName],[])',
+                         compact(self.sources["OrgNormalised"]))
+        self.assertNotIn('Record.FieldOrDefault(EIndex,row[UserPrincipalName],[])',
+                         compact(self.sources["OrgNormalised"]))
 
     def test_crosswalk_and_ambiguity_guards(self):
         self.contains("OrgNormalised", 'Crosswalk = Index(Table.Buffer(Table.Combine({BaseEdges, SourceEdges(VivaSource), SourceEdges(EntraSource)})))',

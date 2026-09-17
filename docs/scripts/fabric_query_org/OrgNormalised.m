@@ -144,16 +144,42 @@ let
     Spine = Table.RenameColumns(
         Table.SelectRows(Table.SelectColumns(Roster, {"userPrincipalName"}), each [userPrincipalName] <> null),
         {{"userPrincipalName", "UserPrincipalName"}}),
-    Upns = Table.Buffer(Table.Distinct(Table.Combine({
+    // Three independent exports, three independent opinions on how to spell
+    // an address, and Table.Distinct compares them case-SENSITIVELY while
+    // the DAX relationship downstream does not. A directory saying LaiC@x
+    // beside a Viva export saying laic@x therefore reached the model as two
+    // Org rows for one person, and Org is the one side of every
+    // relationship, so the refresh failed outright on the duplicate key.
+    //
+    // The same fold is applied to the two indexes below. Deduplicating the
+    // spine alone would fix the crash and replace it with a quieter bug:
+    // the surviving spelling would no longer match the other source, and
+    // that person would load fine with no department at all.
+    Fold = (u as nullable text) as nullable text =>
+        if u = null then null else Text.Lower(Text.Trim(u)),
+    // Record.FromList raises on a repeated field name, so each side is
+    // reduced to one row per folded key before it is indexed.
+    ByFoldedKey = (t as table) as table =>
+        Table.RemoveColumns(
+            Table.Distinct(
+                Table.AddColumn(
+                    Table.SelectRows(t, each [UserPrincipalName] <> null
+                        and Text.Trim([UserPrincipalName]) <> ""),
+                    "_upnKey", each Fold([UserPrincipalName]), type text),
+                {"_upnKey"}),
+            {"_upnKey"}),
+    Upns = Table.Buffer(ByFoldedKey(Table.Combine({
         Spine, Table.SelectColumns(E, {"UserPrincipalName"}), Table.SelectColumns(V, {"UserPrincipalName"})
     }))),
     // V and E have one buffered row per key; index once instead of re-reading nested joins per attribute.
-    VIndex = Record.FromList(List.Buffer(Table.ToRecords(V)), List.Buffer(V[UserPrincipalName])),
-    EIndex = Record.FromList(List.Buffer(Table.ToRecords(E)), List.Buffer(E[UserPrincipalName])),
+    VK = Table.Buffer(ByFoldedKey(V)),
+    EK = Table.Buffer(ByFoldedKey(E)),
+    VIndex = Record.FromList(List.Buffer(Table.ToRecords(VK)), List.Buffer(List.Transform(VK[UserPrincipalName], Fold))),
+    EIndex = Record.FromList(List.Buffer(Table.ToRecords(EK)), List.Buffer(List.Transform(EK[UserPrincipalName], Fold))),
     Merged = Table.FromRecords(List.Transform(Table.ToRecords(Upns), (row) =>
         let
-            VivaRow = Record.FieldOrDefault(VIndex, row[UserPrincipalName], []),
-            EntraRow = Record.FieldOrDefault(EIndex, row[UserPrincipalName], [])
+            VivaRow = Record.FieldOrDefault(VIndex, Fold(row[UserPrincipalName]), []),
+            EntraRow = Record.FieldOrDefault(EIndex, Fold(row[UserPrincipalName]), [])
         in
             Record.FromList({row[UserPrincipalName]} & List.Transform(Attrs, (c) =>
                 let
