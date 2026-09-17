@@ -387,7 +387,11 @@ def check_extra(extra, label):
 class Package:
     """Retain raw records instead of round-tripping ZipInfo through a writer."""
 
-    def __init__(self, raw):
+    def __init__(self, raw, parts=PARTS):
+        # Callers that patch other parts - fix_slicer_defaults.py rewrites report
+        # visuals - supply their own allow-list. The default keeps this script's
+        # model-only guarantee.
+        self.parts = tuple(parts)
         self.raw = raw
         lower_bound = max(0, len(raw) - 65557)
         end = raw.rfind(b"PK\x05\x06", lower_bound)
@@ -452,7 +456,7 @@ class Package:
                 self.contents[name] = archive.read(info)
                 position = record_end
         require(position == end, "ZIP: extra central directory records unsupported")
-        require(all(name in self.infos for name in PARTS), "ZIP: missing required parts")
+        require(all(name in self.infos for name in self.parts), "ZIP: missing required parts")
         ordered = sorted(self.infos, key=lambda name: self.infos[name].header_offset)
         require(bool(ordered), "ZIP: empty archive")
         offsets = [self.infos[name].header_offset for name in ordered] + [cd_offset]
@@ -481,7 +485,7 @@ class Package:
                 require(struct.unpack_from("<LLL", local, 14)
                         == (info.CRC, info.compress_size, info.file_size),
                         f"{name}: local/central CRC or size mismatch")
-            if name in PARTS:
+            if name in self.parts:
                 require(flags & ~0x800 == 0,
                         f"{name}: unsupported flags/data descriptor on changed part")
                 require(compression in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED),
@@ -490,7 +494,7 @@ class Package:
             self.payloads[name] = (header_size, payload_end)
 
     def rebuild(self, updates):
-        require(set(updates) <= set(PARTS), "Attempt to change an unexpected ZIP part")
+        require(set(updates) <= set(self.parts), "Attempt to change an unexpected ZIP part")
         if not updates:
             return self.raw
         local_chunks = [self.prefix]
