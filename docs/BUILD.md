@@ -118,6 +118,40 @@ at *parse* time rather than runtime, so the firewall sees the CSV and SQL source
 in one partition and throws
 `Formula.Firewall: ... privacy levels which cannot be used together`. Two files, no branch.
 
+## Editing the report layer of a shipped `.pbit`
+
+A `.pbit` carries a `SecurityBindings` part that signs the report layer, so **a hand-edited report
+part is always rejected** — Desktop shows *"This file is corrupted or was created by an unrecognized
+version of Power BI Desktop"* and nothing more. Model-only edits (`DataModelSchema`,
+`UnappliedChanges`) are not signed and patch fine; that is why `check_model_only.py` exists.
+
+To change anything in the report, round-trip through PBIP so Desktop re-signs on export:
+
+1. `python docs/scripts/pbit_to_pbip.py "3. Viva Direct/Consumption Central - Viva Direct.pbit" --out C:\pbip`
+2. Patch the plain PBIR JSON under `C:\pbip\<template>\...Report\`.
+3. Open the `.pbip` in Desktop, then **File → Export → Power BI template** back over the repo copy.
+4. `python docs/scripts/fix_pbit_defaults.py` — see below.
+5. Re-run the checks.
+
+> **Generate the project under a short root such as `C:\pbip`.** Desktop is not long-path aware: past
+> 259 characters it reports `Cannot read '<path>'. ... has not been found.` and opens a blank
+> *Untitled* window, which is indistinguishable from a corrupt file until you read the Frown log.
+
+### A re-export always nulls the parameters
+
+Exporting from a project with no data cache writes every parameter as `null` — issue
+[#6](https://github.com/microsoft/ConsumptionCentral-for-Microsoft-Copilot/issues/6) all over again.
+Desktop also drops the comment blocks stored as a query `description` and trims trailing blank lines
+from M. `fix_pbit_defaults.py` repairs all of it, taking the values from the committed template, and
+refuses to overwrite any parameter that is not null:
+
+```
+python docs/scripts/fix_pbit_defaults.py --dry-run
+python docs/scripts/fix_pbit_defaults.py
+```
+
+It is a model-only patch, so the freshly signed report layer is left untouched.
+
 ## Before you ship either one
 
 - [ ] Open the exported `.pbit` fresh — it should prompt for parameters before touching any data

@@ -314,17 +314,81 @@ def patch(path, dry_run=False):
     return len(updates)
 
 
+def patch_project(project, dry_run=False, only=None):
+    """Patch an expanded PBIP project, where no signature covers the report."""
+    project = Path(project).resolve()
+    require(project.is_dir(), f"Project does not exist: {project}")
+    visuals = sorted(project.glob("*.Report/definition/pages/*/visuals/*/visual.json"))
+    require(bool(visuals), f"{project.name}: no PBIR visuals found")
+
+    updates = {}
+    counts = {"group-by": 0, "service": 0}
+    for visual in visuals:
+        name = visual.relative_to(project).as_posix()
+        kind, patched = patch_document(name, visual.read_bytes())
+        if patched is None or (only and kind != only):
+            continue
+        updates[visual] = patched
+        counts[kind] += 1
+
+    print(f"\n{project.name}  ({len(visuals)} visuals scanned)")
+    for kind, found in sorted(counts.items()):
+        print(f"  {kind:10} visuals rewritten: {found}")
+
+    if not updates:
+        print("  already patched; left unchanged")
+        return 0
+
+    expected = {"group-by": EXPECTED_GROUP_BY, "service": EXPECTED_SERVICE}
+    for kind, total in expected.items():
+        if only and kind != only:
+            continue
+        require(counts[kind] == total,
+                f"{project.name}: expected {total} {kind} visuals, found {counts[kind]}")
+    if dry_run:
+        print("  dry run; nothing written")
+        return len(updates)
+
+    for visual, patched in updates.items():
+        scratch = visual.with_name(f".{uuid.uuid4().hex}.tmp")
+        owned = False
+        try:
+            with scratch.open("xb") as stream:
+                owned = True
+                stream.write(patched)
+                stream.flush()
+                os.fsync(stream.fileno())
+            require(scratch.read_bytes() == patched, "Scratch write verification failed")
+            os.replace(scratch, visual)
+            owned = False
+        finally:
+            if owned:
+                scratch.unlink()
+    print(f"  {len(updates)} visuals written under {project}")
+    return len(updates)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--path", type=Path, action="append",
                         help="Template to patch; defaults to all three")
+    parser.add_argument("--pbip", type=Path, action="append",
+                        help="Expanded PBIP project folder to patch instead")
+    parser.add_argument("--only", choices=("group-by", "service"),
+                        help="Apply just one of the two changes (for isolation)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate without writing files")
     args = parser.parse_args(argv)
-    for template in (args.path or TEMPLATES):
-        patch(template, dry_run=args.dry_run)
+    if args.pbip:
+        require(not args.path, "Use either --path or --pbip, not both")
+        for project in args.pbip:
+            patch_project(project, dry_run=args.dry_run, only=args.only)
+    else:
+        require(not args.only, "--only is supported for --pbip projects")
+        for template in (args.path or TEMPLATES):
+            patch(template, dry_run=args.dry_run)
     print()
     return 0
 
