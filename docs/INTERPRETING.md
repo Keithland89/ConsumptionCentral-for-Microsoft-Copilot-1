@@ -36,7 +36,7 @@ your resources.
 
 > **If Viva is de-identified**, the Cowork arrow above doesn't exist. Cowork totals stay correct but
 > stand alone — no per-person view, no departments.
-> **[How to turn identification on →](../README.md#one-admin-setting-connects-everything)**
+> **[How to turn identification on →](../README.md#viva-identification)**
 
 ---
 
@@ -149,7 +149,7 @@ very different responses.
 
 | What you see | Why | Fix |
 |---|---|---|
-| **Department blank or "Unknown"** | No org data, or Viva de-identified | Add `entra_org.csv`, or [enable identification](../README.md#one-admin-setting-connects-everything) |
+| **Department blank or "Unknown"** | No org data, or Viva de-identified | Add `entra_org.csv`, or [enable identification](../README.md#viva-identification) |
 | **Cowork totals right, but no per-person view** | Viva de-identified — hash, not UPN | Enable identification, or include `PersonPolicyMap.csv` |
 | **GitHub users show as usernames, not people** | `GitHubUserMap.csv` missing | Add it — it's the only UPN bridge for GitHub |
 | **Studio per-agent ignores the date filter** | Those exports carry no date | Expected. Only tenant-level Studio is date-aware |

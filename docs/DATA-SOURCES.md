@@ -143,7 +143,7 @@ there *is* a certified **Power Query connector**, so Viva consumption **can** be
   See [3. Viva Direct](../3.%20Viva%20Direct/).
   ([Learn][pbiconn])
 - **Fabric** — a Dataflow Gen2 writes query results straight into a Lakehouse table on a schedule.
-  See [The Viva half needs no notebook](../2.%20Fabric/README.md#the-viva-half-needs-no-notebook).
+  See [Set up Viva](../2.%20Fabric/README.md#viva-dataflow).
   ([Learn][fabconn])
 
 Either way, **auto-refresh must also be enabled on the query itself** in Viva Insights → Analysis
@@ -417,9 +417,9 @@ it does not execute the collector.
 | **Fabric** | Schedule [`Ingest_Azure_AI.ipynb`](../2.%20Fabric/notebooks/Ingest_Azure_AI.ipynb) | `dbo.azure_ai_spend` and `dbo.azure_ai_tokens` through the Lakehouse SQL analytics endpoint |
 | **Viva Direct** | Same Python collector as Local CSV | The same two CSVs in `DataFolder`; the Viva connector does **not** collect Azure data |
 
-Follow the [Local CSV automation steps](../1.%20Local%20CSV/README.md#automate-azure-collection)
-or the [Fabric automation steps](../2.%20Fabric/README.md#2b-azure-ai-foundry-tables-optional).
-For Viva Direct, also configure its [optional Azure file source](../3.%20Viva%20Direct/README.md#automating-azure-in-viva-direct).
+Follow the [Azure collection steps](ADVANCED-SETUP.md#automating-azure-collection)
+or the [Fabric ingestion steps](ADVANCED-SETUP.md#azure-ingestion-in-fabric).
+For Viva Direct, also configure its [optional Azure file source](../3.%20Viva%20Direct/README.md#adding-the-other-products-optional).
 Keep the canonical filenames/table names and column headers below.
 
 The shipped templates' saved Power Query definitions accept these collector output contracts.
