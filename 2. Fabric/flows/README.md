@@ -4,7 +4,7 @@ Consumption Central reads five sources, and they do not automate equally:
 
 | Source | Automated route | Needs a human? |
 |---|---|---|
-| **Viva consumption** | Certified Power Query connector — a [Dataflow Gen2](../README.md#the-viva-half-needs-no-notebook) on Fabric, or a direct connection on [3. Viva Direct](../../3.%20Viva%20Direct/) | **No** |
+| **Viva consumption** | Certified Power Query connector — a [Dataflow Gen2](../README.md#viva-dataflow) on Fabric, or a direct connection on [3. Viva Direct](../../3.%20Viva%20Direct/) | **No** |
 | **GitHub Copilot** | REST API, via [`Ingest_GitHub_API.ipynb`](../notebooks/Ingest_GitHub_API.ipynb) | **No** |
 | **Entra org** | Graph PowerShell on a schedule | **No** |
 | **Copilot Studio** | None — PPAC is download-only | Yes |
@@ -22,7 +22,7 @@ download; it removes the "save it in the right place" step and the mistakes that
 
 ## Azure AI: schedule the notebook, not a file flow
 
-Follow the [Azure AI setup](../README.md#2b-azure-ai-foundry-tables-optional) for application
+Follow the [Azure AI setup](../../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric) for application
 registration, Key Vault, Azure RBAC, the default Lakehouse and notebook configuration.
 The notebook obtains an explicit ARM application token; it does **not** assume Fabric
 `getToken` supports ARM or that the notebook automatically has a managed identity.
@@ -102,7 +102,7 @@ A flow can only react to a file that shows up. How each source gets there:
 
 | Source | Reality |
 |---|---|
-| **Viva consumption** | **No flow needed** — a [Dataflow Gen2](../README.md#the-viva-half-needs-no-notebook) writes query results straight to the Lakehouse on a schedule. Use a flow only if you are deliberately working from downloaded CSVs. |
+| **Viva consumption** | **No flow needed** — a [Dataflow Gen2](../README.md#viva-dataflow) writes query results straight to the Lakehouse on a schedule. Use a flow only if you are deliberately working from downloaded CSVs. |
 | **Copilot Studio** | Manual download — PPAC is download-only. Mail it to the watched mailbox or drop it in the library. |
 | **Azure AI Foundry** | Schedule the API notebook above. No download or mailbox/SharePoint flow is needed. |
 | **GitHub** | The report is *emailed to you*, so the email flow can catch it with no human step at all. Better still, skip it and use the API notebook. |
