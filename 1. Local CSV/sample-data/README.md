@@ -26,6 +26,9 @@ compares like with like.
 | `GitHubUserMap.csv` | 219 | GitHub seats with plan and included credits |
 | `AzureAiSpendDaily.csv` | 1,698 | Azure AI Foundry spend by meter and resource |
 | `AzureAiTokensDaily.csv` | 1,530 | Foundry token counts and PTU utilisation |
+| `AzureSolutionSpend.csv` | 4,030 | Azure AI solution spend by resource × service × day |
+| `AzureDeploymentHealth.csv` | 99 | Model deployment capacity and health snapshots |
+| `AzureBillingReconciliation.csv` | 42 | Usage estimate against invoiced amount, period × pool |
 
 ## What the demo shows
 
@@ -38,6 +41,16 @@ The data is shaped to exercise the parts of the report that matter, rather than 
 - **Provisioned Azure capacity sits near 30%**, which is the finding the Foundry page exists to
   surface — capacity paid for and not used.
 - **Foundry spend is tagged with real departments**, so Group By reaches it like every other product.
+- **The Azure solution view splits three ways** — roughly 64% model, 30% AI service, 6% supporting —
+  so *Model share %* and the cost-basis trend have a shape rather than a single band. Around 89% of
+  it carries a cost-allocation tag, leaving a visible untagged remainder for *Tagged allocation %*.
+- **Capacity and health covers eleven deployments** across provisioned, data-zone provisioned and
+  standard SKUs — 440 PTU at about 60% weighted utilisation, with two deployments under 30% so the
+  low-utilisation review actually returns something. Standard deployments carry no PTU metric, which
+  is the "Not applicable" path on the review column.
+- **Reconciliation never ties out exactly.** Each period and pool carries a usage estimate, the
+  invoiced actual and a credit memo that explains part of the gap, landing between 96% and 100%
+  coverage. Pick one period and one pool and the comparison becomes "Comparable".
 - **Foundry meters use both spellings.** Azure abbreviates the token direction inconsistently — the
   set carries the long forms (`GPT 5 Inpt Glbl 1M Tokens`) and the short ones (`5.4 inp Gl 1M Tokens`,
   `5.4 opt Gl 1M Tokens`), plus a cached meter (`5.4 cd inp Gl 1M Tokens`). Anything that breaks the
@@ -51,7 +64,7 @@ The data is shaped to exercise the parts of the report that matter, rather than 
 
 Set the **`DataFolder`** parameter to this folder. That is the only one that has to change — files are
 found by name, so nothing needs renaming and nothing needs a path of its own. That now includes the
-two Azure files: drop them in with the rest and the Foundry page fills in.
+five Azure files: drop them in with the rest and the Foundry, capacity and reconciliation pages fill in.
 
 Leave the commercial parameters at their defaults for a first look. The cost pages will then be
 arithmetic on list prices rather than your agreement, which is fine for seeing the shape of it.
