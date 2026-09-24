@@ -6,6 +6,20 @@ tables, and Power BI reads those tables. No manual exports, no Fabric capacity.
 Use this path if you want a refresh that runs on its own and you already have
 Power Platform. If you have Fabric, use [2. Fabric](../2.%20Fabric) instead.
 
+> **In testing — not yet verified end to end.**
+>
+> The Copilot Studio flows here read
+> `/licensing/entitlements/MCSMessages/resources`, which returned **403** in our
+> own tenant testing even as Global Administrator with every relevant scope
+> consented. See [experimental/README.md](../experimental/README.md) for exactly
+> what was tried.
+>
+> The Azure and GitHub flows do not depend on that endpoint.
+>
+> Note also that the Studio flows must be owned by an administrator: the Power
+> Platform API has no application role for licensing, so a service principal
+> cannot read this data.
+
 ---
 
 ## What you need

@@ -1,23 +1,33 @@
-"""Collect Copilot Studio CSVs from the Power Platform API instead of by hand.
+"""EXPERIMENTAL. Collect Copilot Studio CSVs from the Power Platform API.
+
+NOT A SUPPORTED SETUP STEP. The manual export in each path README is still the
+way to load Studio data. See experimental/README.md before running this.
+
+Status, from a live test on 2026-09-24:
+
+  - The daily-grain endpoint this needs,
+    /licensing/entitlements/MCSMessages/resources, returned 403 with an empty
+    body. That was on a Global Administrator account, with
+    Licensing.Allocations.Read present in the token, so it is neither a role
+    nor a scope problem. Unresolved.
+  - The tenant-total endpoint, /licensing/entitlements/MCSMessages, works.
+  - Because of the 403, the per-day and per-agent code below has never seen a
+    real response. Its field names come from documentation, not observation,
+    which is why it reads them case- and separator-insensitively.
 
 Examples:
     python pull_studio.py "C:\\Data\\ConsumptionCentral"
     python pull_studio.py "C:\\Data\\ConsumptionCentral" --days 90
 
 Writes StudioTenantDaily.csv and StudioPerAgent.csv, the same two files the
-Power Platform admin centre produces, so every path that reads a data folder
-picks them up with no other change.
+Power Platform admin centre produces.
 
 Uses the runner's existing Azure CLI login; this program never accepts
-credentials. The signed-in principal needs Power Platform administrator, or an
-app registration with Licensing.Read.All. Schedule daily after UTC midnight and
-refresh Power BI ONLY after exit code 0.
+credentials.
 
-Two things this cannot do. There is no per-user route on the API, so
-StudioPerUser.csv remains a manual export - see fallback/. And the API keeps a
-limited window, so treat these files as the current picture rather than an
-archive; if you need history beyond that, use 2. Fabric or
-4. Power Automate + Dataverse, which both accumulate it.
+There is no per-user route on the API, so StudioPerUser.csv is a manual export
+either way. The API also keeps a limited window, so treat these files as the
+current picture rather than an archive.
 
 Per-agent figures are an aggregate over the requested window, stamped with the
 month it ends in. That matches the admin centre export, which is also an
@@ -37,7 +47,7 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 HOST = "api.powerplatform.com"
 BASE = f"https://{HOST}"
@@ -45,6 +55,9 @@ API = "2024-10-01"
 ENTITLEMENT = "MCSMessages"
 PAGE_SIZE = 5000
 MAX_PAGES = 10000
+# Undocumented, but required for the per-agent dimensions. url_for encodes the
+# comma, which is what the working implementation sends (users%2Ctags%2CasOfDate).
+INCLUDE_FIELDS = "users,tags,asOfDate"
 TIMEOUT = 120
 RETRIES = 5
 
@@ -58,23 +71,30 @@ AGENT_HEADERS = ["Agent Name", "Agent Id", "Product", "AI Feature/Billable Featu
                  "Tool Used", "LLM Model", "Scenario Name", "Environment Id",
                  "Environment Name", "Snapshot Month"]
 
-# The documented response model names `metadata` but not its keys, and what is
-# in it varies by tenant. Read every key case- and separator-insensitively and
-# take the first that is present, rather than guess one spelling and silently
-# write blank columns.
+# Metadata key names, verified live against a real tenant on 2026-08-24 by
+# PetrosFeleskouras/copilot-credit-consumption (docs/power-platform-licensing-api.md)
+# and cross-checked against that solution's flow definition. The published REST
+# reference names `metadata` but not its keys, so these are the only observed
+# spellings - they are listed FIRST in each tuple. The remaining entries are
+# older guesses kept as a cushion, and matching stays case- and
+# separator-insensitive.
+#
+# Rich keys only appear when includeFields=users,tags,asOfDate is sent.
 FIELDS = {
-    "agent_name": ("agentname", "resourcename", "displayname", "name"),
-    "agent_id": ("agentid", "resourceid", "botid"),
+    "agent_name": ("resourcename", "agentname", "displayname", "name"),
+    "agent_id": ("resourceid", "agentid", "botid"),
     "product": ("productname", "product"),
-    "feature": ("feature", "billablefeature", "aifeature"),
-    "channel": ("channel", "channelname"),
+    "feature": ("featurename", "feature", "billablefeature", "aifeature"),
+    "channel": ("channelid", "channel", "channelname"),
     "knowledge": ("knowledgesources", "knowledge"),
-    "tool": ("toolused", "tool", "tools"),
+    "tool": ("toolinvoked", "toolused", "tool", "tools"),
     "model": ("llmmodel", "modelname", "model"),
     "scenario": ("scenarioname", "scenario"),
     "environment": ("environmentid", "environment"),
-    "nonbillable": ("nonbillableconsumed", "nonbilledcredit", "nonbillablecredits"),
-    "billable": ("billableconsumed", "billedcredit", "consumed"),
+    "nonbillable": ("nonbillablequantity", "nonbillableconsumed",
+                    "nonbilledcredit", "nonbillablecredits"),
+    "billable": ("consumed", "billableconsumed", "billedcredit"),
+    "users": ("users",),
     "capacity_type": ("capacitytype", "type"),
     "plan_id": ("billingplanid", "planid"),
     "plan_name": ("billingplanname", "planname"),
@@ -193,12 +213,51 @@ def get(url, bearer):
     raise CollectionError(f"gave up on {url}")
 
 
+def rows_in(body):
+    """Flatten a page into resource rows.
+
+    The published reference describes a flat `value[]`. What a tenant actually
+    returns for this route - verified live on 2026-08-24 by
+    PetrosFeleskouras/copilot-credit-consumption, whose flow reads
+    `first(body?['value'])?['resources']` - is a nested envelope:
+
+        {"value": [{"resources": [ {...}, {...} ]}], "continuationtoken": ""}
+
+    Handle both: take `resources` when a group carries it, otherwise treat the
+    entry as a row. Reading only the flat form yields group objects, and every
+    field then comes out blank instead of failing loudly.
+    """
+    out = []
+    for entry in body.get("value") or []:
+        if not isinstance(entry, dict):
+            continue
+        nested = entry.get("resources")
+        if isinstance(nested, list):
+            out.extend(item for item in nested if isinstance(item, dict))
+        else:
+            out.append(entry)
+    return out
+
+
+def with_token(url, marker):
+    """The same request again at the next page.
+
+    Rebuilding the URL from scratch would drop fromDate, toDate and
+    includeFields, so page two would silently describe a different window from
+    page one. Keep every parameter and replace only the token.
+    """
+    split = urlsplit(url)
+    params = dict(parse_qsl(split.query, keep_blank_values=True))
+    params["continuationtoken"] = marker
+    return urlunsplit(split._replace(query=urlencode(params)))
+
+
 def pages(url, bearer):
-    """Every page of a paged collection."""
+    """Every row of a paged collection."""
     seen = 0
     while url:
         body = get(url, bearer)
-        for row in body.get("value") or []:
+        for row in rows_in(body):
             yield row
         seen += 1
         if seen >= MAX_PAGES:
@@ -208,8 +267,7 @@ def pages(url, bearer):
             marker = body.get("continuationToken") or body.get("continuationtoken")
             if not marker:
                 return
-            follow = url_for(f"/licensing/entitlements/{ENTITLEMENT}/resources",
-                             continuationtoken=marker, pageSize=PAGE_SIZE)
+            follow = with_token(url, marker)
         url = follow
 
 
@@ -230,16 +288,57 @@ def environments(bearer):
 
 
 def capacity(bearer):
-    """Entitlement totals, used for the entitled and prepaid columns."""
+    """Entitlement totals, used for the entitled and prepaid columns.
+
+    The shape here was observed live on 2026-09-24 and is NOT the flat one the
+    published reference implies. A real response looks like:
+
+        {"entitlementId": "MCSMessages",
+         "entitlement": {"capacity": {"entitled":   {"value": 0.0},
+                                      "allocated":  {"value": 140496.0},
+                                      "consumed":   {"value": 0.0},
+                                      "availableQuantity": -140496.0},
+                         "payGo":    {"entitled": {"value": 0.0},
+                                      "consumed": {"value": 0.0}}}}
+
+    It is tenant-wide, with no environment breakdown, so the total is stored
+    under "" and read as the fallback for every environment.
+
+    Prefer entitled, but fall back to allocated: a tenant that buys capacity
+    through allocation reports 0 entitled and a real allocated figure, which is
+    exactly what the test tenant did.
+    """
     body = get(url_for(f"/licensing/entitlements/{ENTITLEMENT}"), bearer)
     rows = body.get("value") if isinstance(body.get("value"), list) else [body]
     totals = {}
     for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        entitlement = row.get("entitlement")
+        entitlement = entitlement if isinstance(entitlement, dict) else {}
+        cap = entitlement.get("capacity")
+        cap = cap if isinstance(cap, dict) else {}
+
+        def amount(*names):
+            """Read cap[name], accepting {"value": n} or a bare number."""
+            for name in names:
+                item = cap.get(name)
+                if isinstance(item, dict) and item.get("value") is not None:
+                    return number(item.get("value"))
+                if isinstance(item, (int, float, str)) and str(item).strip():
+                    return number(item)
+            return ""
+
+        entitled = amount("entitled")
+        if entitled in ("", 0, 0.0):
+            allocated = amount("allocated")
+            if allocated not in ("", 0, 0.0):
+                entitled = allocated
+
         environment = str(field(row, "environment", "")).lower()
         totals[environment] = {
-            "entitled": number(meta_get(row, ("entitled", "entitledquantity",
-                                              "allocated", "total"))),
-            "plan_id": field(row, "plan_id", ""),
+            "entitled": entitled,
+            "plan_id": field(row, "plan_id", "") or row.get("entitlementId", ""),
             "plan_name": field(row, "plan_name", ""),
         }
     return totals
@@ -247,7 +346,12 @@ def capacity(bearer):
 
 def day_rows(bearer, day):
     path = f"/licensing/entitlements/{ENTITLEMENT}/resources"
-    url = url_for(path, fromDate=day, toDate=day, pageSize=PAGE_SIZE)
+    # includeFields is absent from the published reference, but without it the
+    # response carries none of the per-agent dimensions - no user count, no
+    # asOfDate, and the rich metadata block is not returned. Verified live by
+    # PetrosFeleskouras/copilot-credit-consumption.
+    url = url_for(path, fromDate=day, toDate=day, pageSize=PAGE_SIZE,
+                  includeFields=INCLUDE_FIELDS)
     return list(pages(url, bearer))
 
 
@@ -378,7 +482,7 @@ def main():
         sys.exit(f"error: {error}")
 
     print(f"\ndone. StudioPerUser.csv has no API - export it by hand if you "
-          f"want the per-user page; see fallback/README.md")
+          f"want the per-user page; there is no API route for it)")
 
 
 if __name__ == "__main__":
