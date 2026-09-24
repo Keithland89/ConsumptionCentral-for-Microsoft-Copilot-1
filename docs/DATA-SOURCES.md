@@ -233,12 +233,26 @@ treat `ServiceName` as an open list — Consumption Central groups by whatever v
 > trend up to 3 months, per-environment breakdowns, per-agent billed vs non-billable credits — but
 > not a CSV export from it.
 >
-> **What is confirmed:** PPAC is a **CSV download** surface for this data. There is no API for the
-> per-agent and per-user grain that Consumption Central uses, so this source is manual on every path,
-> including Fabric. Look for a **Download** or **Export** control on each tab.
+> **What is confirmed:** PPAC is a **CSV download** surface for this data. Look for a **Download** or
+> **Export** control on each tab.
 >
-> If you cannot find one, skip it — the Studio pages stay empty and the other two products are
-> unaffected.
+> **There is an API for part of it.** The Power Platform licensing API returns tenant and per-agent
+> consumption, at a *daily* grain the CSV does not have:
+>
+> ```
+> GET https://api.powerplatform.com/licensing/entitlements/MCSMessages/resources
+>     ?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&api-version=2024-10-01
+> ```
+>
+> `MCSMessages` is the entitlement id for Copilot Credits; the product rename did not change it.
+> Two paths use it instead of the CSV: the Fabric notebook
+> [`Ingest_Studio_Consumption.ipynb`](../2.%20Fabric/notebooks/Ingest_Studio_Consumption.ipynb) and the
+> flows in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20%2B%20Dataverse).
+>
+> **The per-user grain has no API.** `StudioPerUser.csv` stays a manual export on every path.
+>
+> If you cannot find the export and do not want the API, skip it — the Studio pages stay empty and the
+> other two products are unaffected.
 
 ### Files and columns
 
