@@ -33,6 +33,7 @@ nothing breaks.
 | **[1. Local CSV](1.%20Local%20CSV/)** | You want to see it working today | ~10 minutes |
 | **[2. Fabric](2.%20Fabric/)** | You want it refreshing weekly on its own | An afternoon |
 | **[3. Viva Direct](3.%20Viva%20Direct/)** | You want Cowork data with no files at all | ~10 minutes |
+| **[4. Power Automate + Dataverse](4.%20Power%20Automate%20%2B%20Dataverse/)** | You want automatic refresh and have no Fabric | An afternoon |
 
 Not sure? Start with **Local CSV**.
 

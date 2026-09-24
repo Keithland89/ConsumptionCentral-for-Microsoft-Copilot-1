@@ -1,0 +1,179 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Button",
+      "inputs": {}
+    }
+  },
+  "actions": {
+    "Initialise": {
+      "type": "InitializeVariable",
+      "runAfter": {},
+      "inputs": {
+        "variables": [
+          {
+            "name": "TenantId",
+            "type": "string",
+            "value": ""
+          },
+          {
+            "name": "ClientId",
+            "type": "string",
+            "value": ""
+          },
+          {
+            "name": "DataverseUrl",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Days": {
+      "type": "Compose",
+      "runAfter": {
+        "Initialise": [
+          "Succeeded"
+        ]
+      },
+      "inputs": "@range(0, 180)"
+    },
+    "For_each_day": {
+      "type": "Foreach",
+      "runAfter": {
+        "Days": [
+          "Succeeded"
+        ]
+      },
+      "foreach": "@map(outputs('Days'), item => formatDateTime(addDays(utcNow(), mul(-1, item)), 'yyyy-MM-dd'))",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "actions": {
+        "Get_secret": {
+          "type": "OpenApiConnection",
+          "runAfter": {},
+          "inputs": {
+            "host": {
+              "connectionName": "shared_keyvault",
+              "operationId": "GetSecret",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault"
+            },
+            "parameters": {
+              "secretName": "consumption-central-client-secret"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Get_token": {
+          "type": "Http",
+          "runAfter": {
+            "Get_secret": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "method": "POST",
+            "uri": "https://login.microsoftonline.com/@{variables('TenantId')}/oauth2/v2.0/token",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "grant_type=client_credentials&client_id=@{variables('ClientId')}&client_secret=@{body('Get_secret')?['value']}&scope=https://management.azure.com/.default"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Fetch": {
+          "type": "Http",
+          "runAfter": {
+            "Get_token": [
+              "Succeeded"
+            ]
+          },
+          "inputs": {
+            "method": "GET",
+            "uri": "https://management.azure.com/providers/Microsoft.CostManagement/query?api-version=2023-03-01&fromDate=@{items('For_each_day')}&toDate=@{items('For_each_day')}",
+            "headers": {
+              "Authorization": "Bearer @{body('Get_token')?['access_token']}",
+              "Accept": "application/json"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "For_each_row": {
+          "type": "Foreach",
+          "runAfter": {
+            "Fetch": [
+              "Succeeded"
+            ]
+          },
+          "foreach": "@coalesce(body('Fetch')?['value'], json('[]'))",
+          "actions": {
+            "Upsert_row": {
+              "type": "OpenApiConnection",
+              "runAfter": {},
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateRecordWithAlternateKey",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cc_azureaispends",
+                  "alternateKey": "cc_rowkey",
+                  "item": {
+                    "cc_rowkey": "@{concat(coalesce(string(items('For_each_row')?['UsageDate']), '')'|'coalesce(string(items('For_each_row')?['ResourceName']), '')'|'coalesce(string(items('For_each_row')?['ServiceName']), '')'|'coalesce(string(items('For_each_row')?['Meter']), '')'|'coalesce(string(items('For_each_row')?['Model']), '')'|'coalesce(string(items('For_each_row')?['TokenDirection']), ''))}",
+                    "cc_name": "@{first(take(concat(coalesce(string(items('For_each_row')?['UsageDate']), 'row')), 400))}",
+                    "cc_loadedon": "@{utcNow()}",
+                    "cc_payloadjson": "@{string(items('For_each_row'))}",
+                    "cc_usagequantity": "@{items('For_each_row')?['UsageQuantity']}",
+                    "cc_usagedate": "@{items('For_each_row')?['UsageDate']}",
+                    "cc_servicename": "@{items('For_each_row')?['ServiceName']}",
+                    "cc_meter": "@{items('For_each_row')?['Meter']}",
+                    "cc_model": "@{items('For_each_row')?['Model']}",
+                    "cc_tokendirection": "@{items('For_each_row')?['TokenDirection']}",
+                    "cc_resourcename": "@{items('For_each_row')?['ResourceName']}",
+                    "cc_resourcegroup": "@{items('For_each_row')?['ResourceGroup']}",
+                    "cc_cost": "@{items('For_each_row')?['Cost']}",
+                    "cc_departmenttag": "@{items('For_each_row')?['DepartmentTag']}",
+                    "cc_currency": "@{items('For_each_row')?['Currency']}"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
