@@ -15,7 +15,7 @@
     }
   },
   "actions": {
-    "Initialise": {
+    "Initialise_TenantId": {
       "type": "InitializeVariable",
       "runAfter": {},
       "inputs": {
@@ -24,14 +24,55 @@
             "name": "TenantId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_ClientId": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_TenantId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "ClientId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_DataverseUrl": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_ClientId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "DataverseUrl",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Initialise_ContinuationToken": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_DataverseUrl": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
+          {
+            "name": "ContinuationToken",
             "type": "string",
             "value": ""
           }
@@ -41,7 +82,7 @@
     "Days": {
       "type": "Compose",
       "runAfter": {
-        "Initialise": [
+        "Initialise_ContinuationToken": [
           "Succeeded"
         ]
       },

@@ -15,7 +15,7 @@
     }
   },
   "actions": {
-    "Initialise": {
+    "Initialise_TenantId": {
       "type": "InitializeVariable",
       "runAfter": {},
       "inputs": {
@@ -24,14 +24,55 @@
             "name": "TenantId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_ClientId": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_TenantId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "ClientId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_DataverseUrl": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_ClientId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "DataverseUrl",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Initialise_ContinuationToken": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_DataverseUrl": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
+          {
+            "name": "ContinuationToken",
             "type": "string",
             "value": ""
           }
@@ -41,7 +82,7 @@
     "Days": {
       "type": "Compose",
       "runAfter": {
-        "Initialise": [
+        "Initialise_ContinuationToken": [
           "Succeeded"
         ]
       },
@@ -71,32 +112,8 @@
               "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault"
             },
             "parameters": {
-              "secretName": "consumption-central-client-secret"
+              "secretName": "consumption-central-github-token"
             }
-          },
-          "runtimeConfiguration": {
-            "secureData": {
-              "properties": [
-                "inputs",
-                "outputs"
-              ]
-            }
-          }
-        },
-        "Get_token": {
-          "type": "Http",
-          "runAfter": {
-            "Get_secret": [
-              "Succeeded"
-            ]
-          },
-          "inputs": {
-            "method": "POST",
-            "uri": "https://login.microsoftonline.com/@{variables('TenantId')}/oauth2/v2.0/token",
-            "headers": {
-              "Content-Type": "application/x-www-form-urlencoded"
-            },
-            "body": "grant_type=client_credentials&client_id=@{variables('ClientId')}&client_secret=@{body('Get_secret')?['value']}&scope=None"
           },
           "runtimeConfiguration": {
             "secureData": {

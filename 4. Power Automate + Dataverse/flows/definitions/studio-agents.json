@@ -18,7 +18,7 @@
     }
   },
   "actions": {
-    "Initialise": {
+    "Initialise_TenantId": {
       "type": "InitializeVariable",
       "runAfter": {},
       "inputs": {
@@ -27,14 +27,55 @@
             "name": "TenantId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_ClientId": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_TenantId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "ClientId",
             "type": "string",
             "value": ""
-          },
+          }
+        ]
+      }
+    },
+    "Initialise_DataverseUrl": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_ClientId": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
           {
             "name": "DataverseUrl",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Initialise_ContinuationToken": {
+      "type": "InitializeVariable",
+      "runAfter": {
+        "Initialise_DataverseUrl": [
+          "Succeeded"
+        ]
+      },
+      "inputs": {
+        "variables": [
+          {
+            "name": "ContinuationToken",
             "type": "string",
             "value": ""
           }
@@ -44,7 +85,7 @@
     "Days": {
       "type": "Compose",
       "runAfter": {
-        "Initialise": [
+        "Initialise_ContinuationToken": [
           "Succeeded"
         ]
       },
@@ -64,117 +105,99 @@
         }
       },
       "actions": {
-        "Get_secret": {
-          "type": "OpenApiConnection",
+        "Reset_continuation": {
+          "type": "SetVariable",
           "runAfter": {},
           "inputs": {
-            "host": {
-              "connectionName": "shared_keyvault",
-              "operationId": "GetSecret",
-              "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault"
-            },
-            "parameters": {
-              "secretName": "consumption-central-client-secret"
-            }
-          },
-          "runtimeConfiguration": {
-            "secureData": {
-              "properties": [
-                "inputs",
-                "outputs"
-              ]
-            }
+            "name": "ContinuationToken",
+            "value": ""
           }
         },
-        "Get_token": {
-          "type": "Http",
+        "Until_page": {
+          "type": "Until",
           "runAfter": {
-            "Get_secret": [
+            "Reset_continuation": [
               "Succeeded"
             ]
           },
-          "inputs": {
-            "method": "POST",
-            "uri": "https://login.microsoftonline.com/@{variables('TenantId')}/oauth2/v2.0/token",
-            "headers": {
-              "Content-Type": "application/x-www-form-urlencoded"
-            },
-            "body": "grant_type=client_credentials&client_id=@{variables('ClientId')}&client_secret=@{body('Get_secret')?['value']}&scope=https://api.powerplatform.com/.default"
+          "expression": "@equals(variables('ContinuationToken'), '')",
+          "limit": {
+            "count": 1000,
+            "timeout": "PT1H"
           },
-          "runtimeConfiguration": {
-            "secureData": {
-              "properties": [
-                "inputs",
-                "outputs"
-              ]
-            }
-          }
-        },
-        "Fetch": {
-          "type": "Http",
-          "runAfter": {
-            "Get_token": [
-              "Succeeded"
-            ]
-          },
-          "inputs": {
-            "method": "GET",
-            "uri": "https://api.powerplatform.com/licensing/entitlements/MCSMessages/resources?api-version=2024-10-01&pageSize=5000&includeFields=tags&fromDate=@{items('For_each_day')}&toDate=@{items('For_each_day')}",
-            "headers": {
-              "Authorization": "Bearer @{body('Get_token')?['access_token']}",
-              "Accept": "application/json"
-            }
-          },
-          "runtimeConfiguration": {
-            "secureData": {
-              "properties": [
-                "inputs"
-              ]
-            }
-          }
-        },
-        "For_each_row": {
-          "type": "Foreach",
-          "runAfter": {
-            "Fetch": [
-              "Succeeded"
-            ]
-          },
-          "foreach": "@coalesce(body('Fetch')?['value'], json('[]'))",
           "actions": {
-            "Upsert_row": {
+            "Fetch": {
               "type": "OpenApiConnection",
               "runAfter": {},
               "inputs": {
                 "host": {
-                  "connectionName": "shared_commondataserviceforapps",
-                  "operationId": "UpdateRecordWithAlternateKey",
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                  "connectionName": "shared_webcontents_1",
+                  "operationId": "InvokeHttp",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_webcontents"
                 },
                 "parameters": {
-                  "entityName": "cc_studioagents",
-                  "alternateKey": "cc_rowkey",
-                  "item": {
-                    "cc_rowkey": "@{concat(coalesce(string(items('For_each_row')?['snapshot_month']), '')'|'coalesce(string(items('For_each_row')?['Agent_Id']), '')'|'coalesce(string(items('For_each_row')?['Billable_Feature']), '')'|'coalesce(string(items('For_each_row')?['Channel']), '')'|'coalesce(string(items('For_each_row')?['LLM_Model']), '')'|'coalesce(string(items('For_each_row')?['Scenario_Name']), '')'|'coalesce(string(items('For_each_row')?['Environment_Id']), ''))}",
-                    "cc_name": "@{first(take(concat(coalesce(string(items('For_each_row')?['snapshot_month']), 'row')), 400))}",
-                    "cc_loadedon": "@{utcNow()}",
-                    "cc_payloadjson": "@{string(items('For_each_row'))}",
-                    "cc_agentname": "@{items('For_each_row')?['Agent_Name']}",
-                    "cc_agentid": "@{items('For_each_row')?['Agent_Id']}",
-                    "cc_product": "@{items('For_each_row')?['Product']}",
-                    "cc_billablefeature": "@{items('For_each_row')?['Billable_Feature']}",
-                    "cc_billedcredit": "@{items('For_each_row')?['Billed_credit']}",
-                    "cc_nonbilledcredit": "@{items('For_each_row')?['Non_billed_credit']}",
-                    "cc_channel": "@{items('For_each_row')?['Channel']}",
-                    "cc_knowledgesources": "@{items('For_each_row')?['Knowledge_Sources']}",
-                    "cc_toolused": "@{items('For_each_row')?['Tool_Used']}",
-                    "cc_llmmodel": "@{items('For_each_row')?['LLM_Model']}",
-                    "cc_scenarioname": "@{items('For_each_row')?['Scenario_Name']}",
-                    "cc_environmentid": "@{items('For_each_row')?['Environment_Id']}",
-                    "cc_environmentname": "@{items('For_each_row')?['Environment_Name']}",
-                    "cc_snapshotmonth": "@{formatDateTime(items('For_each_day'), 'yyyy-MM')}"
+                  "request/method": "GET",
+                  "request/url": "@{concat('https://api.powerplatform.com/licensing/entitlements/MCSMessages/resources?api-version=2024-10-01&pageSize=5000&includeFields=users%2Ctags%2CasOfDate&fromDate=', items('For_each_day'), '&toDate=', items('For_each_day'), '&continuationtoken=', variables('ContinuationToken'))}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "For_each_row": {
+              "type": "Foreach",
+              "runAfter": {
+                "Fetch": [
+                  "Succeeded"
+                ]
+              },
+              "foreach": "@coalesce(first(body('Fetch')?['value'])?['resources'], body('Fetch')?['value'], json('[]'))",
+              "actions": {
+                "Upsert_row": {
+                  "type": "OpenApiConnection",
+                  "runAfter": {},
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateRecordWithAlternateKey",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cc_studioagents",
+                      "alternateKey": "cc_rowkey",
+                      "item": {
+                        "cc_rowkey": "@{concat(coalesce(string(items('For_each_row')?['snapshot_month']), '')'|'coalesce(string(items('For_each_row')?['Agent_Id']), '')'|'coalesce(string(items('For_each_row')?['Billable_Feature']), '')'|'coalesce(string(items('For_each_row')?['Channel']), '')'|'coalesce(string(items('For_each_row')?['LLM_Model']), '')'|'coalesce(string(items('For_each_row')?['Scenario_Name']), '')'|'coalesce(string(items('For_each_row')?['Environment_Id']), ''))}",
+                        "cc_name": "@{first(take(concat(coalesce(string(items('For_each_row')?['snapshot_month']), 'row')), 400))}",
+                        "cc_loadedon": "@{utcNow()}",
+                        "cc_payloadjson": "@{string(items('For_each_row'))}",
+                        "cc_agentname": "@{items('For_each_row')?['Agent_Name']}",
+                        "cc_agentid": "@{items('For_each_row')?['Agent_Id']}",
+                        "cc_product": "@{items('For_each_row')?['Product']}",
+                        "cc_billablefeature": "@{items('For_each_row')?['Billable_Feature']}",
+                        "cc_billedcredit": "@{items('For_each_row')?['Billed_credit']}",
+                        "cc_nonbilledcredit": "@{items('For_each_row')?['Non_billed_credit']}",
+                        "cc_channel": "@{items('For_each_row')?['Channel']}",
+                        "cc_knowledgesources": "@{items('For_each_row')?['Knowledge_Sources']}",
+                        "cc_toolused": "@{items('For_each_row')?['Tool_Used']}",
+                        "cc_llmmodel": "@{items('For_each_row')?['LLM_Model']}",
+                        "cc_scenarioname": "@{items('For_each_row')?['Scenario_Name']}",
+                        "cc_environmentid": "@{items('For_each_row')?['Environment_Id']}",
+                        "cc_environmentname": "@{items('For_each_row')?['Environment_Name']}",
+                        "cc_snapshotmonth": "@{formatDateTime(items('For_each_day'), 'yyyy-MM')}"
+                      }
+                    }
                   }
                 }
+              }
+            },
+            "Set_continuation": {
+              "type": "SetVariable",
+              "runAfter": {
+                "For_each_row": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "name": "ContinuationToken",
+                "value": "@{coalesce(body('Fetch')?['continuationtoken'], '')}"
               }
             }
           }
