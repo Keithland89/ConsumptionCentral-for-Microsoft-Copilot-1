@@ -53,6 +53,9 @@ jobs:
 
           LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
           HEAD = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.M)
+          # Explicit <a id="..."> targets are just as linkable as headings,
+          # and are what a deep link uses when the heading text is unstable.
+          ANCHOR = re.compile(r"""<a\s[^>]*\b(?:id|name)\s*=\s*["']([^"']+)["']""", re.I)
 
           def slug(text):
               # GitHub's heading anchor rules: strip markdown, lowercase,
@@ -74,6 +77,7 @@ jobs:
                       p = os.path.normpath(os.path.join(dirpath, fn))
                       body = open(p, encoding="utf-8").read()
                       docs[p] = {slug(m.group(2)) for m in HEAD.finditer(body)}
+                      docs[p] |= set(ANCHOR.findall(body))
 
           missing = []
           ok = 0
