@@ -58,6 +58,14 @@ Lakehouse at the top of each, run.
 | `Ingest_Org` | Viva attributes, optionally enriched by an Entra export | `org_attributes` |
 | `Ingest_Viva_Consumption` | *Fallback only* — Viva CSV export | `viva_credits_weekly`, `viva_spending_policy` |
 
+`Ingest_Studio` is the supported way to load Copilot Studio data. Use it.
+
+There is also an `Ingest_Studio_Consumption` notebook in that folder which reads
+the Power Platform licensing API instead of the export. **It is in testing, it
+is not a substitute yet, and a scheduled Fabric refresh cannot authenticate to
+that API at all** — the permission it needs exists only as a delegated one.
+See [experimental/](../experimental/README.md) before trying it.
+
 `Ingest_Azure_AI` needs an Entra app registration and Key Vault secret before it will run —
 **[setup →](../docs/ADVANCED-SETUP.md#azure-ingestion-in-fabric)**. Leave it out and the Foundry page
 is simply empty, which is supported.

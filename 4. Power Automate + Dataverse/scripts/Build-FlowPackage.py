@@ -166,8 +166,19 @@ def upsert_action(feed: dict, table: dict, prefix: str) -> dict:
         f"{prefix}payloadjson": "@{string(items('For_each_row'))}",
     }
     for column in table["columns"]:
+        canonical = column["canonical"]
+        if canonical == "snapshot_month":
+            # The API returns no snapshot_month, so reading the row would
+            # always yield null. An absent column is harmless - LatestSnapshot
+            # passes the table straight through - but a column that exists and
+            # is blank fails ParseExportDate with MissingExportDate and kills
+            # the whole refresh. Stamp the month of the day being loaded.
+            item[column["logicalName"]] = (
+                "@{formatDateTime(items('For_each_day'), 'yyyy-MM')}"
+            )
+            continue
         item[column["logicalName"]] = (
-            f"@{{items('For_each_row')?['{column['canonical']}']}}"
+            f"@{{items('For_each_row')?['{canonical}']}}"
         )
     return {
         "Upsert_row": {
