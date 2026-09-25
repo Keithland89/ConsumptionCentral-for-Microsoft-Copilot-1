@@ -190,8 +190,9 @@ def entra_fetch_action(feed: dict) -> dict:
     """Read one page as the flow owner, through the Entra connector.
 
     No Authorization header: the connection is bound to the API's resource URI
-    and the connector attaches the signed-in admin's token. That delegated
-    identity is the only one these routes answer.
+    and the connector attaches the signed-in admin's token. The connector is
+    also a client the API already trusts, which a token minted by your own app
+    registration is not - that combination is what these routes require.
     """
     return {
         "Fetch": {
@@ -472,6 +473,10 @@ def main() -> None:
             "shared_keyvault": {
                 "name": "shared_keyvault",
                 "id": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+            },
+            ENTRA_CONNECTOR: {
+                "name": ENTRA_CONNECTOR,
+                "id": "/providers/Microsoft.PowerApps/apis/" + ENTRA_CONNECTOR,
             },
         }, indent=2))
 

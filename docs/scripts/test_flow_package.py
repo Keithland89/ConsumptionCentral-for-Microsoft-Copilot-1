@@ -277,5 +277,44 @@ class BackfillTests(unittest.TestCase):
                 self.assertEqual(pick(a), pick(b))
 
 
+class PackageTests(unittest.TestCase):
+    """Every connector a flow calls must be declared in the package."""
+
+    def connectors_used(self) -> set[str]:
+        """Walk the built definitions and collect each apiId's connector."""
+        found: set[str] = set()
+        stack = []
+        for name, feed in FEEDS.items():
+            table = TABLES[feed["table"]]
+            for backfill in (False, True):
+                stack.append(build.definition(feed, table, PREFIX, backfill))
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                api = node.get("apiId")
+                if isinstance(api, str):
+                    found.add(api.rsplit("/", 1)[-1])
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+        return found
+
+    def test_apis_map_covers_every_connector(self):
+        """Read the committed package, not the source that writes it."""
+        import zipfile
+
+        package = (Path(build.__file__).parent.parent / "flows"
+                   / "ConsumptionCentral-Dataverse.zip")
+        self.assertTrue(package.exists(), f"{package.name} has not been built")
+        with zipfile.ZipFile(package) as zf:
+            declared = json.loads(zf.read("Microsoft.Flow/apisMap.json"))
+        for connector in self.connectors_used():
+            with self.subTest(connector):
+                self.assertIn(connector, declared)
+
+    def test_entra_connector_is_actually_used(self):
+        self.assertIn(build.ENTRA_CONNECTOR, self.connectors_used())
+
+
 if __name__ == "__main__":
     unittest.main()
