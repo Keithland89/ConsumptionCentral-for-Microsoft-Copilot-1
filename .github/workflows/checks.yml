@@ -131,6 +131,17 @@ jobs:
       - name: Local Azure collector regression tests
         run: python "1. Local CSV/test_pull_azure_ai.py"
 
+      - name: Dataverse flow package contract tests
+        run: python docs/scripts/test_flow_package.py
+
+      - name: Studio consumption API tests
+        run: |
+          python docs/scripts/test_pull_studio.py
+          python docs/scripts/test_studio_consumption_notebook.py
+
+      - name: Fabric ingestion tests
+        run: python docs/scripts/test_fabric_ingestion.py
+
       - name: Sample data carries no real identifiers
         run: |
           # The sample set is synthetic. This catches a real export being

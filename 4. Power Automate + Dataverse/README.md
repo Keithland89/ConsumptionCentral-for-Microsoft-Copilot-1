@@ -6,19 +6,19 @@ tables, and Power BI reads those tables. No manual exports, no Fabric capacity.
 Use this path if you want a refresh that runs on its own and you already have
 Power Platform. If you have Fabric, use [2. Fabric](../2.%20Fabric) instead.
 
-> **In testing — not yet verified end to end.**
+> **How the Copilot Studio flows sign in**
 >
-> The Copilot Studio flows here read
-> `/licensing/entitlements/MCSMessages/resources`, which returned **403** in our
-> own tenant testing even as Global Administrator with every relevant scope
-> consented. See [experimental/README.md](../experimental/README.md) for exactly
-> what was tried.
+> The licensing endpoint these flows read only answers a **delegated**
+> tenant-admin identity. The Power Platform API publishes no application role
+> that covers it, so a client secret gets `403` with an empty body no matter
+> what you consent to.
 >
-> The Azure and GitHub flows do not depend on that endpoint.
+> The flows therefore call it through the **HTTP with Microsoft Entra ID**
+> connection, which signs each call as the person who owns the flow. That owner
+> must be a Global Administrator, Power Platform Administrator, or Billing
+> Administrator, and the flows stop working if ownership moves to anyone else.
 >
-> Note also that the Studio flows must be owned by an administrator: the Power
-> Platform API has no application role for licensing, so a service principal
-> cannot read this data.
+> The Azure and GitHub flows are unaffected and still use the app registration.
 
 ---
 
@@ -58,7 +58,18 @@ Re-running is safe. It skips anything that already exists.
 1. Go to [make.powerautomate.com](https://make.powerautomate.com)
 2. **My flows** → **Import** → **Import Package (Legacy)**
 3. Upload `flows/ConsumptionCentral-Dataverse.zip`
-4. Set the Dataverse and Key Vault connections it asks for, then **Import**
+4. Set the connections it asks for, then **Import**
+
+Sign in as an administrator, because the Studio flows read the licensing data as
+whoever owns them.
+
+One of the connections is **HTTP with Microsoft Entra ID**. Create it with the
+same value in both boxes:
+
+| Box | Value |
+|---|---|
+| Base Resource URL | `https://api.powerplatform.com` |
+| Microsoft Entra ID resource URI | `https://api.powerplatform.com` |
 
 There are eight flows - a daily flow and a one-off backfill flow for each of
 four feeds. They import switched off.
@@ -67,7 +78,8 @@ four feeds. They import switched off.
 
 ## Step 3 - Fill in the connection details
 
-Open each **daily** flow and set these variables in its first action:
+Open each **daily** flow and set these variables in the `Initialise_` actions at
+the top:
 
 | Variable | Value |
 |---|---|
@@ -75,8 +87,13 @@ Open each **daily** flow and set these variables in its first action:
 | `ClientId` | App registration from [PERMISSIONS.md](PERMISSIONS.md) |
 | `DataverseUrl` | `https://your-org.crm.dynamics.com` |
 
+Leave `ContinuationToken` empty. The flows use it to page through a long day.
+
 The client secret is not a variable. The flows read it from Key Vault under the
 name `consumption-central-client-secret`.
+
+The two Copilot Studio flows ignore `TenantId`, `ClientId` and the secret - they
+authenticate as their owner instead.
 
 ---
 

@@ -45,31 +45,48 @@ SECRET_NAMES = {
 # Each feed: which Dataverse table it fills, the API it reads, and how far back
 # a normal run goes. RESTATE is the trailing window a daily run rewrites,
 # because billing APIs revise recent days after first publishing them.
+# The licensing routes only answer a *delegated* tenant-admin identity. The
+# Power Platform API publishes no application role that covers them, so a
+# client-credentials token - even one that can call other Power Platform APIs -
+# gets 403 with an empty body. The "HTTP with Microsoft Entra ID" connector
+# (shared_webcontents) signs the call as the flow owner, which is the only
+# combination confirmed to return data. See README for the admin roles.
+ENTRA_CONNECTOR = "shared_webcontents"
+ENTRA_CONNECTION = "shared_webcontents_1"
+
+# Undocumented but required: without includeFields the response carries no
+# metadata block at all, so every rich column lands empty.
+INCLUDE_FIELDS = "users%2Ctags%2CasOfDate"
+
 FEEDS = [
     {
         "name": "Studio Consumption",
         "table": "studio_tenant_daily",
+        "auth": "entra_connector",
         "scope": "https://api.powerplatform.com/.default",
         "host": "api.powerplatform.com",
         "path": "/licensing/entitlements/MCSMessages/resources",
-        "query": {"api-version": "2024-10-01", "pageSize": "5000"},
+        "query": {"api-version": "2024-10-01", "pageSize": "5000",
+                  "includeFields": INCLUDE_FIELDS},
         "restate": 7,
         "backfill": 180,
     },
     {
         "name": "Studio Agents",
         "table": "studio_agent",
+        "auth": "entra_connector",
         "scope": "https://api.powerplatform.com/.default",
         "host": "api.powerplatform.com",
         "path": "/licensing/entitlements/MCSMessages/resources",
         "query": {"api-version": "2024-10-01", "pageSize": "5000",
-                  "includeFields": "tags"},
+                  "includeFields": INCLUDE_FIELDS},
         "restate": 7,
         "backfill": 180,
     },
     {
         "name": "Azure AI Spend",
         "table": "azure_ai_spend",
+        "auth": "client_credentials",
         "scope": "https://management.azure.com/.default",
         "host": "management.azure.com",
         "path": "/providers/Microsoft.CostManagement/query",
@@ -80,6 +97,7 @@ FEEDS = [
     {
         "name": "GitHub Usage",
         "table": "github_ai_usage",
+        "auth": "github_token",
         "scope": None,
         "host": "api.github.com",
         "path": "/enterprises/{enterprise}/settings/billing/usage",
@@ -99,7 +117,14 @@ def flow_id(name: str) -> str:
 
 
 def token_action(feed: dict) -> dict:
-    """Client-credentials token, with the secret fetched from Key Vault."""
+    """Client-credentials token, with the secret fetched from Key Vault.
+
+    Only for feeds whose API really does grant application permissions. The
+    licensing routes do not, so those feeds emit no token action at all and let
+    the Entra connector sign the call as the flow owner instead.
+    """
+    if feed.get("auth") != "client_credentials":
+        return {}
     return {
         "Get_secret": {
             "type": "OpenApiConnection", "runAfter": {},
@@ -127,7 +152,64 @@ def token_action(feed: dict) -> dict:
     }
 
 
+def github_secret_action(feed: dict) -> dict:
+    """The GitHub feed authenticates with a PAT rather than an Entra token."""
+    if feed.get("auth") != "github_token":
+        return {}
+    return {
+        "Get_secret": {
+            "type": "OpenApiConnection", "runAfter": {},
+            "inputs": {
+                "host": {"connectionName": "shared_keyvault",
+                         "operationId": "GetSecret",
+                         "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault"},
+                "parameters": {"secretName": SECRET_NAMES["GitHubToken"]},
+            },
+            "runtimeConfiguration": {"secureData": {"properties": ["inputs", "outputs"]}},
+        },
+    }
+
+
+def request_url(feed: dict) -> str:
+    """The day's request, carrying the continuation token between pages.
+
+    Every parameter stays on the URL for each page. Rebuilding a continuation
+    request without the original window would silently return a different day.
+    """
+    query = "&".join(f"{k}={v}" for k, v in feed["query"].items())
+    separator = "&" if query else ""
+    return ("@{concat('https://" + feed["host"] + feed["path"] + "?" + query + separator
+            + "fromDate=', items('For_each_day'),"
+            " '&toDate=', items('For_each_day'),"
+            " '&continuationtoken=', variables('ContinuationToken'))}")
+
+
+def entra_fetch_action(feed: dict) -> dict:
+    """Read one page as the flow owner, through the Entra connector.
+
+    No Authorization header: the connection is bound to the API's resource URI
+    and the connector attaches the signed-in admin's token. That delegated
+    identity is the only one these routes answer.
+    """
+    return {
+        "Fetch": {
+            "type": "OpenApiConnection", "runAfter": {},
+            "inputs": {
+                "host": {"connectionName": ENTRA_CONNECTION,
+                         "operationId": "InvokeHttp",
+                         "apiId": ("/providers/Microsoft.PowerApps/apis/"
+                                   + ENTRA_CONNECTOR)},
+                "parameters": {"request/method": "GET",
+                               "request/url": request_url(feed)},
+                "authentication": "@parameters('$authentication')",
+            },
+        },
+    }
+
+
 def fetch_action(feed: dict, after: str) -> dict:
+    if feed.get("auth") == "entra_connector":
+        return entra_fetch_action(feed)
     query = "&".join(f"{k}={v}" for k, v in feed["query"].items())
     separator = "&" if query else ""
     auth = ("Bearer @{body('Get_token')?['access_token']}" if feed["scope"]
@@ -194,6 +276,65 @@ def upsert_action(feed: dict, table: dict, prefix: str) -> dict:
     }
 
 
+def row_source(feed: dict) -> str:
+    """Where the resource rows actually live in a page.
+
+    The reference schema describes a flat `value[]`, but a real tenant returns
+    a group envelope - `value[0].resources[]`. Reading the flat shape yields
+    group objects, so every column lands empty and nothing raises. Prefer the
+    nested shape and fall back to flat.
+    """
+    if feed.get("auth") != "entra_connector":
+        return "@coalesce(body('Fetch')?['value'], json('[]'))"
+    return ("@coalesce(first(body('Fetch')?['value'])?['resources'], "
+            "body('Fetch')?['value'], json('[]'))")
+
+
+def day_actions(feed: dict, table: dict, prefix: str) -> dict:
+    """What runs for a single day."""
+    read_rows = {
+        "For_each_row": {
+            "type": "Foreach",
+            "runAfter": {"Fetch": ["Succeeded"]},
+            "foreach": row_source(feed),
+            "actions": upsert_action(feed, table, prefix),
+        },
+    }
+    if feed.get("auth") != "entra_connector":
+        after = "Get_token" if feed.get("auth") == "client_credentials" else "Get_secret"
+        return {
+            **token_action(feed),
+            **github_secret_action(feed),
+            **fetch_action(feed, after),
+            **read_rows,
+        }
+    # Page until the API stops handing back a continuation token. Without this
+    # a day larger than one page is silently truncated.
+    return {
+        "Reset_continuation": {
+            "type": "SetVariable", "runAfter": {},
+            "inputs": {"name": "ContinuationToken", "value": ""},
+        },
+        "Until_page": {
+            "type": "Until",
+            "runAfter": {"Reset_continuation": ["Succeeded"]},
+            "expression": "@equals(variables('ContinuationToken'), '')",
+            "limit": {"count": 1000, "timeout": "PT1H"},
+            "actions": {
+                **fetch_action(feed, ""),
+                **read_rows,
+                "Set_continuation": {
+                    "type": "SetVariable", "runAfter": {"For_each_row": ["Succeeded"]},
+                    "inputs": {
+                        "name": "ContinuationToken",
+                        "value": "@{coalesce(body('Fetch')?['continuationtoken'], '')}",
+                    },
+                },
+            },
+        },
+    }
+
+
 def definition(feed: dict, table: dict, prefix: str, backfill: bool) -> dict:
     days = feed["backfill"] if backfill else feed["restate"]
     trigger = ({"manual": {"type": "Request", "kind": "Button", "inputs": {}}} if backfill
@@ -204,7 +345,20 @@ def definition(feed: dict, table: dict, prefix: str, backfill: bool) -> dict:
         {"name": "TenantId", "type": "string", "value": ""},
         {"name": "ClientId", "type": "string", "value": ""},
         {"name": "DataverseUrl", "type": "string", "value": ""},
+        {"name": "ContinuationToken", "type": "string", "value": ""},
     ]
+    # One variable per action: InitializeVariable takes a single variable, so a
+    # list of them silently leaves all but the first undeclared.
+    setup: dict = {}
+    previous = ""
+    for variable in variables:
+        name = f"Initialise_{variable['name']}"
+        setup[name] = {
+            "type": "InitializeVariable",
+            "runAfter": {previous: ["Succeeded"]} if previous else {},
+            "inputs": {"variables": [variable]},
+        }
+        previous = name
     return {
         "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/"
                    "schemas/2016-06-01/workflowdefinition.json#",
@@ -212,12 +366,9 @@ def definition(feed: dict, table: dict, prefix: str, backfill: bool) -> dict:
         "parameters": {"$connections": {"defaultValue": {}, "type": "Object"}},
         "triggers": trigger,
         "actions": {
-            "Initialise": {
-                "type": "InitializeVariable", "runAfter": {},
-                "inputs": {"variables": variables},
-            },
+            **setup,
             "Days": {
-                "type": "Compose", "runAfter": {"Initialise": ["Succeeded"]},
+                "type": "Compose", "runAfter": {previous: ["Succeeded"]},
                 "inputs": (f"@range(0, {days})"),
             },
             "For_each_day": {
@@ -228,17 +379,9 @@ def definition(feed: dict, table: dict, prefix: str, backfill: bool) -> dict:
                             "'yyyy-MM-dd'))"),
                 # One day at a time. A multi-day request collapses the dates and
                 # the daily grain - the whole reason for using the API - is lost.
+                # Paging also shares one continuation variable across days.
                 "runtimeConfiguration": {"concurrency": {"repetitions": 1}},
-                "actions": {
-                    **token_action(feed),
-                    **fetch_action(feed, "Get_token" if feed["scope"] else "Get_secret"),
-                    "For_each_row": {
-                        "type": "Foreach",
-                        "runAfter": {"Fetch": ["Succeeded"]},
-                        "foreach": "@coalesce(body('Fetch')?['value'], json('[]'))",
-                        "actions": upsert_action(feed, table, prefix),
-                    },
-                },
+                "actions": day_actions(feed, table, prefix),
             },
         },
     }

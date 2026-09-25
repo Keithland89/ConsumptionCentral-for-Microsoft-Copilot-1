@@ -1,11 +1,12 @@
 # Experimental: Power Platform API for Copilot Studio
 
 **This is not a setup step.** Every path in this repo still loads Copilot Studio
-data from the manual admin-centre export described in its own README. Nothing
-here is required, and nothing here is supported yet.
+data from the manual admin-centre export described in its own README.
 
-This folder exists so the API work is visible and reviewable while it is still
-being tested, rather than sitting in a branch.
+The one place the licensing API *is* supported is
+[4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse), where
+a flow can sign in as its admin owner. The scripts here are the interactive
+equivalents, kept visible and reviewable rather than sitting in a branch.
 
 ## What it would replace
 
@@ -29,9 +30,33 @@ Tested against a live tenant on 2026-09-24.
 | `GET /licensing/entitlements/MCSMessages/resources` | **403, empty body** |
 
 That last row is the one `pull_studio.py` depends on for per-day, per-agent
-figures. Until it is resolved, this script cannot complete a run.
+figures. It is now understood — see below — and the fix is a supported setup
+step in [4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
+It still blocks the unattended paths.
 
-### What the 403 is not
+### Resolved: it was the identity, not the request
+
+The 403 is not a tenant problem and not a scope problem. **The Power Platform
+API publishes no application role that covers the licensing routes** — every
+`Licensing.*` permission exists only as a delegated one. A client-credentials
+token is therefore refused no matter what has been consented, which is exactly
+what the empty-bodied 403 was saying.
+
+These routes answer a **delegated tenant-admin** sign-in only. The working
+combination is the Power Automate **HTTP with Microsoft Entra ID** connection,
+which signs each call as the flow's owner, with that owner being a Global
+Administrator, Power Platform Administrator, or Billing Administrator.
+
+That is now implemented and is a supported setup step — see
+[4. Power Automate + Dataverse](../4.%20Power%20Automate%20+%20Dataverse).
+
+The consequence for everything else in this folder: `pull_studio.py` and the
+Fabric `Ingest_Studio_Consumption` notebook can only run **interactively**, as
+a signed-in admin. Neither can be scheduled, because neither has a delegated
+user at refresh time. That is a property of the API, not something this repo
+can work around.
+
+### What the 403 was not
 
 Worth recording, because each of these looks like the obvious answer:
 
@@ -45,11 +70,8 @@ Worth recording, because each of these looks like the obvious answer:
   refusing.
 - **Not a missing parameter.** The request matched a known-working
   implementation character for character, `includeFields` included.
-
-The tenant used was a Microsoft demo tenant reporting `consumed.value = 0` —
-no Copilot Studio credits had ever been used — so it may simply not serve this
-route. That has not been confirmed either way. **If you get this working, or
-get a different result, please open an issue.**
+- **Not the empty tenant.** The demo tenant reported `consumed.value = 0`,
+  which looked like a plausible cause at the time. It was not the cause.
 
 ## The response contract
 
