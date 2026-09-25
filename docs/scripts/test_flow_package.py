@@ -54,7 +54,7 @@ def fetch_of(name):
 
 
 class LicensingAuthTests(unittest.TestCase):
-    """The licensing routes only answer a delegated tenant-admin identity."""
+    """These routes need a delegated admin *and* a client the API trusts."""
 
     def test_studio_feeds_use_the_entra_connector(self):
         for name in STUDIO:
